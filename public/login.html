@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Login • CryptoFantasy</title>
+    <style>
+      :root {
+        --bg: #0f1724; /* dark navy */
+        --card: #0b1220;
+        --accent: #7c3aed; /* purple */
+        --muted: #9ca3af;
+        --glass: rgba(255, 255, 255, 0.03);
+      }
+      html,
+      body {
+        height: 100%;
+        overflow: hidden;
+      }
+      body {
+        margin: 0;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+          Roboto, "Helvetica Neue", Arial;
+        background: linear-gradient(180deg, #071025 0%, #041022 100%);
+        color: #e6eef8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .container {
+        width: 100%;
+        max-width: 420px;
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.02),
+          rgba(255, 255, 255, 0.01)
+        );
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        border-radius: 12px;
+        box-shadow: 0 10px 30px rgba(2, 6, 23, 0.6);
+        padding: 20px;
+      }
+      .brand {
+        text-align: center;
+        margin-bottom: 14px;
+      }
+      .brand h1 {
+        margin: 0;
+        font-size: 18px;
+        letter-spacing: 0.6px;
+      }
+      .brand p {
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      label {
+        font-size: 12px;
+        color: var(--muted);
+        display: block;
+        margin-bottom: 4px;
+      }
+      input[type="text"],
+      input[type="email"],
+      input[type="password"] {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        background: var(--glass);
+        color: inherit;
+        outline: none;
+        font-size: 14px;
+        box-sizing: border-box;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        justify-content: space-between;
+        margin-top: 4px;
+      }
+      .btn {
+        display: inline-block;
+        background: var(--accent);
+        color: white;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 15px;
+      }
+      .btn.secondary {
+        background: transparent;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .meta {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: center;
+        margin-top: 10px;
+      }
+      .error {
+        color: #ff7b7b;
+        font-size: 12px;
+        margin-top: 4px;
+      }
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .footer-links {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin-top: 14px;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      /* password field with inline toggle */
+      .password-wrapper {
+        position: relative;
+      }
+      .password-wrapper input {
+        padding-right: 44px;
+      }
+      .pass-toggle {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: none;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 500;
+      }
+      .pass-toggle:hover {
+        background: rgba(255, 255, 255, 0.05);
+      }
+      @media (max-width: 460px) {
+        body {
+          padding: 16px;
+        }
+        .container {
+          padding: 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container" role="main" aria-labelledby="loginTitle">
+      <div class="brand">
+        <h1 id="loginTitle">CryptoFantasy</h1>
+        <p>Sign in to your account</p>
+      </div>
+
+      <form id="loginForm" action="/login" method="post" novalidate>
+        <div>
+          <label for="username">Username</label>
+          <input
+            id="username"
+            name="username"
+            type="text"
+            placeholder="Enter your username"
+            required
+            aria-required="true"
+          />
+          <div
+            id="usernameError"
+            class="error"
+            aria-live="polite"
+            style="display: none"
+          ></div>
+        </div>
+
+        <div>
+          <label for="password">Password</label>
+          <div class="password-wrapper">
+            <input
+              id="password"
+              name="password"
+              type="password"
+              placeholder="Your password"
+              required
+              aria-required="true"
+            />
+            <button
+              type="button"
+              class="pass-toggle"
+              id="togglePass"
+              aria-pressed="false"
+              aria-label="Show password"
+            >
+              Show
+            </button>
+          </div>
+          <div
+            id="passwordError"
+            class="error"
+            aria-live="polite"
+            style="display: none"
+          ></div>
+        </div>
+
+        <div class="row small" style="justify-content: center; margin-top: 8px">
+          <a href="#" id="forgot">Forgot password?</a>
+        </div>
+
+        <div class="actions" style="justify-content: center; margin-top: 16px">
+          <button type="submit" class="btn" style="width: 100%">Sign in</button>
+        </div>
+      </form>
+
+      <p class="meta">No account? <a href="/register.html">Sign up</a></p>
+
+      <script>
+        (function () {
+          const form = document.getElementById("loginForm");
+          const username = document.getElementById("username");
+          const password = document.getElementById("password");
+          const usernameErr = document.getElementById("usernameError");
+          const pwErr = document.getElementById("passwordError");
+          const toggle = document.getElementById("togglePass");
+
+          toggle.addEventListener("click", () => {
+            const isHidden = password.type === "password";
+            password.type = isHidden ? "text" : "password";
+            toggle.textContent = isHidden ? "Hide" : "Show";
+            toggle.setAttribute("aria-pressed", String(isHidden));
+          });
+
+          form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            let ok = true;
+            usernameErr.style.display = "none";
+            pwErr.style.display = "none";
+
+            if (!username.value.trim()) {
+              usernameErr.textContent = "Please enter your username.";
+              usernameErr.style.display = "block";
+              ok = false;
+            }
+            if (!password.value) {
+              pwErr.textContent = "Please enter your password.";
+              pwErr.style.display = "block";
+              ok = false;
+            } else if (password.value.length < 6) {
+              pwErr.textContent = "Password must be at least 6 characters.";
+              pwErr.style.display = "block";
+              ok = false;
+            }
+
+            if (!ok) return;
+
+            try {
+              const response = await fetch("/api/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  username: username.value,
+                  password: password.value,
+                }),
+              });
+
+              const data = await response.json();
+
+              if (response.ok) {
+                window.location.href = "/dashboard.html";
+              } else {
+                pwErr.textContent = data.error || "Login failed";
+                pwErr.style.display = "block";
+              }
+            } catch (err) {
+              pwErr.textContent = "Network error. Please try again.";
+              pwErr.style.display = "block";
+            }
+          });
+        })();
+      </script>
+    </main>
+  </body>
+</html>
