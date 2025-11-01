@@ -1,24 +1,31 @@
-# fly.toml app configuration file generated for cryptofantasy on 2025-10-22T21:08:19-04:00
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'cryptofantasy'
-primary_region = 'iad'
+app = "cryptofantasy"
+primary_region = "iad"
 
 [build]
 
 [env]
-  PORT = '8080'
+  PORT = "8080"
+
+[processes]
+  web    = "node server.js"
+  worker = "node scripts/fetch_prices.js"
 
 [http_service]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
-  auto_start_machines = false
+  auto_stop_machines = "stop"
+  auto_start_machines = true
   min_machines_running = 0
+  processes = ["web"]
 
 [[vm]]
-  memory = '256mb'
-  cpu_kind = 'shared'
+  memory = "256mb"
+  cpu_kind = "shared"
   cpus = 1
+  processes = ["web"]
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
+  processes = ["worker"]

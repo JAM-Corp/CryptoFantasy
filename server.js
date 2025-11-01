@@ -127,6 +127,7 @@ async function initDB() {
   }
 
   try {
+    // Auth table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -136,6 +137,15 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Price tables from scripts/prices.sql
+    const pricesSqlPath = path.join(__dirname, "scripts", "prices.sql");
+    if (fs.existsSync(pricesSqlPath)) {
+      const sql = fs.readFileSync(pricesSqlPath, "utf8");
+      await pool.query(sql);
+      console.log("Price tables initialized");
+    }
+
     console.log("Database tables initialized");
   } catch (e) {
     console.error("Error initializing database:", e);
@@ -251,6 +261,44 @@ app.get("/api/me", requireAuth, async (req, res) => {
     res.json({ user: result.rows[0] });
   } catch (e) {
     res.status(500).json({ error: "Failed to get user" });
+  }
+});
+
+// Get current price for a coin
+app.get("/api/price/:symbol", async (req, res) => {
+  if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+  const symbol = (req.params.symbol || "").trim().toUpperCase();
+  if (!symbol) return res.status(400).json({ error: "symbol required" });
+
+  try {
+    const { rows } = await pool.query(
+      "select symbol, price_usd, fetched_at from prices_latest where symbol = $1",
+      [symbol]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "not found" });
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Get all historical prices for a coin
+app.get("/api/prices/:symbol", async (req, res) => {
+  if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+  const symbol = (req.params.symbol || "").trim().toUpperCase();
+  if (!symbol) return res.status(400).json({ error: "symbol required" });
+
+  try {
+    const { rows } = await pool.query(
+      "select symbol, ts_min, price_usd from price_points_min where symbol = $1 order by ts_min asc",
+      [symbol]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "no data" });
+    res.json({ symbol, count: rows.length, points: rows });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
   }
 });
 
