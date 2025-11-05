@@ -1,0 +1,26 @@
+create table if not exists portfolios (
+  user_id    integer primary key references users(id) on delete cascade,
+  cash_usd   numeric(20,8) not null default 100000.0,
+  created_at timestamptz   not null default now()
+);
+
+create table if not exists holdings (
+  user_id integer not null references users(id) on delete cascade,
+  symbol  text    not null,
+  qty     numeric(30,12) not null default 0,
+  primary key (user_id, symbol),
+  check (qty >= 0)
+);
+
+create table if not exists trades (
+  id         bigserial primary key,
+  user_id    integer not null references users(id) on delete cascade,
+  symbol     text    not null,
+  side       text    not null check (side in ('BUY','SELL')),
+  qty        numeric(30,12) not null check (qty > 0),
+  price_usd  numeric(20,8)  not null check (price_usd > 0),
+  cost_usd   numeric(28,8)  not null,
+  created_at timestamptz    not null default now()
+);
+
+create index if not exists idx_trades_user_time on trades(user_id, created_at desc);

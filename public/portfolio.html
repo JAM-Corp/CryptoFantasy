@@ -1,0 +1,11 @@
+<!doctype html><meta charset="utf-8" />
+<title>Portfolio</title>
+<h1>Portfolio</h1>
+<pre id="out">Loading...</pre>
+<script>
+(async ()=>{
+  const r = await fetch("/api/portfolio");
+  const j = await r.json();
+  out.textContent = JSON.stringify(j, null, 2);
+})();
+</script>
