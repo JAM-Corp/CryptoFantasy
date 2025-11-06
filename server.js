@@ -42,6 +42,12 @@ if (process.env.DATABASE_URL) {
 
 const pool = dbConfig ? new Pool(dbConfig) : null;
 
+// Allowed coins for PoC (coingecko ids, e.g., BITCOIN, ETHEREUM)
+const COIN_WHITELIST = (process.env.COIN_WHITELIST || process.env.CG_IDS || "bitcoin,ethereum,solana")
+  .split(",")
+  .map(s => s.trim().toUpperCase())
+  .filter(Boolean);
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -65,6 +71,30 @@ function requireAuth(req, res, next) {
     res.redirect("/login.html");
   }
 }
+
+// Helpers
+async function ensurePortfolio(userId) {
+  await pool.query(
+    `insert into portfolios (user_id) values ($1)
+     on conflict (user_id) do nothing`,
+    [userId]
+  );
+}
+
+async function getCurrentPrice(symbolU) {
+  const { rows } = await pool.query(
+    "select price_usd from prices_latest where symbol = $1",
+    [symbolU]
+  );
+  return rows[0]?.price_usd ?? null;
+}
+
+function validateSymbol(raw) {
+  const s = (raw || "").trim().toUpperCase();
+  if (!s || !COIN_WHITELIST.includes(s)) return null;
+  return s;
+}
+
 
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
@@ -91,6 +121,13 @@ app.use(
   requireAuth,
   express.static(path.join(__dirname, "public"))
 );
+app.get("/portfolio.html", requireAuth, (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "portfolio.html"));
+});
+app.get("/trade.html", requireAuth, (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "trade.html"));
+});
+
 
 // All other static files require auth
 app.use(
@@ -135,6 +172,14 @@ async function initDB() {
       const sql = fs.readFileSync(pricesSqlPath, "utf8");
       await pool.query(sql);
       console.log("Price tables initialized");
+    }
+
+    // Portfolio tables from scripts/portfolio.sql
+    const portfolioSqlPath = path.join(__dirname, "scripts", "portfolio.sql");
+    if (fs.existsSync(portfolioSqlPath)) {
+      const sql2 = fs.readFileSync(portfolioSqlPath, "utf8");
+      await pool.query(sql2);
+      console.log("Portfolio tables initialized");
     }
 
     console.log("Database tables initialized");
@@ -289,6 +334,137 @@ app.get("/api/prices/:symbol", async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ error: "no data" });
     res.json({ symbol, count: rows.length, points: rows });
   } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Get portfolio: cash, holdings with live value, totals
+app.get("/api/portfolio", requireAuth, async (req, res) => {
+  try {
+    await ensurePortfolio(req.session.userId);
+
+    // cash
+    const cashRow = await pool.query(
+      "select cash_usd from portfolios where user_id = $1",
+      [req.session.userId]
+    );
+    const cash = Number(cashRow.rows[0].cash_usd);
+
+    // holdings joined to latest price
+    const { rows } = await pool.query(
+      `select h.symbol,
+              h.qty::text as qty,                -- return as text to avoid JS float issues
+              pl.price_usd::text as price_usd,
+              (h.qty * pl.price_usd)::text as market_value
+       from holdings h
+       left join prices_latest pl on pl.symbol = h.symbol
+       where h.user_id = $1
+       order by h.symbol`,
+      [req.session.userId]
+    );
+
+    const cryptoValue = rows.reduce((sum, r) => sum + Number(r.market_value || 0), 0);
+    const totalValue  = cash + cryptoValue;
+
+    res.json({
+      cash_usd: cash.toFixed(2),
+      crypto_value_usd: cryptoValue.toFixed(2),
+      total_value_usd: totalValue.toFixed(2),
+      holdings: rows
+    });
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+// Trade ({ symbol, side: "BUY"|"SELL", quantity })
+app.post("/api/trade", requireAuth, async (req, res) => {
+  try {
+    const { symbol, side, quantity } = req.body;
+    const symbolU = validateSymbol(symbol);
+    const sideU = (side || "").toUpperCase();
+    const qty = Number(quantity);
+
+    if (!symbolU) return res.status(400).json({ error: "symbol not allowed" });
+    if (sideU !== "BUY" && sideU !== "SELL") return res.status(400).json({ error: "side must be BUY or SELL" });
+    if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: "quantity must be > 0" });
+
+    await ensurePortfolio(req.session.userId);
+
+    // fetch price
+    const price = await getCurrentPrice(symbolU);
+    if (!price) return res.status(400).json({ error: "no current price; try later" });
+    const px = Number(price);
+    const cost = +(px * qty).toFixed(8); // positive number
+
+    await pool.query("BEGIN");
+
+    // load current cash & qty with FOR UPDATE
+    const cashRow = await pool.query("select cash_usd from portfolios where user_id = $1 for update", [req.session.userId]);
+    const cash = Number(cashRow.rows[0].cash_usd);
+
+    const hRow = await pool.query(
+      "select qty from holdings where user_id = $1 and symbol = $2 for update",
+      [req.session.userId, symbolU]
+    );
+    const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
+
+    if (sideU === "BUY") {
+      if (cash < cost) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "insufficient cash" });
+      }
+      await pool.query("update portfolios set cash_usd = cash_usd - $1 where user_id = $2", [cost, req.session.userId]);
+      await pool.query(
+        `insert into holdings (user_id, symbol, qty)
+         values ($1, $2, $3)
+         on conflict (user_id, symbol) do update set qty = holdings.qty + excluded.qty`,
+        [req.session.userId, symbolU, qty]
+      );
+      await pool.query(
+        `insert into trades (user_id, symbol, side, qty, price_usd, cost_usd)
+         values ($1,$2,'BUY',$3,$4,$5)`,
+        [req.session.userId, symbolU, qty, px, cost]
+      );
+    } else {
+      // SELL
+      if (curQty < qty) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "insufficient quantity" });
+      }
+      await pool.query("update portfolios set cash_usd = cash_usd + $1 where user_id = $2", [cost, req.session.userId]);
+      await pool.query("update holdings set qty = qty - $1 where user_id = $2 and symbol = $3", [qty, req.session.userId, symbolU]);
+      await pool.query("delete from holdings where user_id = $1 and symbol = $2 and qty <= 0", [req.session.userId, symbolU]);
+      await pool.query(
+        `insert into trades (user_id, symbol, side, qty, price_usd, cost_usd)
+         values ($1,$2,'SELL',$3,$4,$5)`,
+        [req.session.userId, symbolU, qty, px, cost]
+      );
+    }
+
+    await pool.query("COMMIT");
+
+    // return fresh snapshot
+    const { rows } = await pool.query(
+      `select h.symbol, h.qty::text as qty, pl.price_usd::text as price_usd,
+              (h.qty * pl.price_usd)::text as market_value
+       from holdings h left join prices_latest pl on pl.symbol = h.symbol
+       where h.user_id = $1 order by h.symbol`,
+      [req.session.userId]
+    );
+    const cash2 = Number((await pool.query("select cash_usd from portfolios where user_id = $1", [req.session.userId])).rows[0].cash_usd);
+    const cryptoValue = rows.reduce((s,r)=>s+Number(r.market_value||0),0);
+
+    res.json({
+      success: true,
+      price_used_usd: px.toFixed(8),
+      cash_usd: cash2.toFixed(2),
+      crypto_value_usd: cryptoValue.toFixed(2),
+      total_value_usd: (cash2+cryptoValue).toFixed(2),
+      holdings: rows
+    });
+  } catch (e) {
+    try { await pool.query("ROLLBACK"); } catch {}
     res.status(500).json({ error: String(e) });
   }
 });
