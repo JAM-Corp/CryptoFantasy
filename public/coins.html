@@ -143,6 +143,38 @@
         min-height: calc(100vh - 60px);
       }
 
+      .coin-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255,255,255,0.08);
+            padding: 14px 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 120ms ease, box-shadow 120ms ease;
+        }
+
+      .coin-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(0,0,0,0.25);
+      }
+
+      .coin-icon {
+            flex: 0 0 auto;
+            display: inline-block;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 1px solid #d4a017;
+            background: radial-gradient(circle at 30% 30%, #fff7a1 0%, #ffe066 40%, #ffca2c 70%, #e0a800 100%);
+            box-shadow:
+                inset 0 2px 3px rgba(255,255,255,0.6),
+                inset 0 -2px 3px rgba(0,0,0,0.08);
+        }
+
       .btn {
         background: #7c3aed;
         color: white;
@@ -256,21 +288,21 @@
     </div>
 
     <script>
-      async function checkAuth() {
-        try {
-          const res = await fetch("/api/me");
-          if (res.ok) {
-            const data = await res.json();
-            document.getElementById("username").textContent =
-              data.user.username;
-            document.getElementById("userInfo").style.display = "flex";
-          } else {
-            window.location.href = "/login.html";
-          }
-        } catch (e) {
-          window.location.href = "/login.html";
-        }
-      }
+    //   async function checkAuth() {
+    //     try {
+    //       const res = await fetch("/api/me");
+    //       if (res.ok) {
+    //         const data = await res.json();
+    //         document.getElementById("username").textContent =
+    //           data.user.username;
+    //         document.getElementById("userInfo").style.display = "flex";
+    //       } else {
+    //         window.location.href = "/login.html";
+    //       }
+    //     } catch (e) {
+    //       window.location.href = "/login.html";
+    //     }
+    //   }
 
       async function logout() {
         await fetch("/api/logout", { method: "POST" });
@@ -281,7 +313,7 @@
         window.location.href = `/${page}.html`;
       }
 
-      checkAuth();
+    //   checkAuth();
     </script>
   </body>
 </html>

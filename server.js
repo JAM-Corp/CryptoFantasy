@@ -121,6 +121,13 @@ app.use(
   requireAuth,
   express.static(path.join(__dirname, "public"))
 );
+
+app.use(
+  "/coins.html",
+  requireAuth,
+  express.static(path.join(__dirname, "public"))
+);
+
 app.get("/portfolio.html", requireAuth, (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "portfolio.html"));
 });
