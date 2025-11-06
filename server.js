@@ -69,7 +69,7 @@ function requireAuth(req, res, next) {
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
   if (req.session.userId) {
-    res.redirect("/dashboard.html");
+    res.redirect("/index.html");
   } else {
     res.redirect("/login.html");
   }
@@ -86,11 +86,6 @@ app.use(
 );
 
 // Protected routes - require authentication
-app.use(
-  "/dashboard.html",
-  requireAuth,
-  express.static(path.join(__dirname, "public"))
-);
 app.use(
   "/index.html",
   requireAuth,
@@ -127,16 +122,12 @@ async function initDB() {
   }
 
   try {
-    // Auth table
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR(50) UNIQUE NOT NULL,
-        email VARCHAR(100) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    const usersSqlPath = path.join(__dirname, "scripts", "users.sql");
+    if (fs.existsSync(usersSqlPath)) {
+      const sql = fs.readFileSync(usersSqlPath, "utf8");
+      await pool.query(sql);
+      console.log("Users table initialized");
+    }
 
     // Price tables from scripts/prices.sql
     const pricesSqlPath = path.join(__dirname, "scripts", "prices.sql");

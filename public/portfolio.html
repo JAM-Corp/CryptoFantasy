@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CryptoFantasy</title>
+    <title>Portfolio - CryptoFantasy</title>
     <style>
       * {
         margin: 0;
@@ -37,6 +37,7 @@
       .topbar h1 {
         font-size: 24px;
         color: #7c3aed;
+        cursor: pointer;
       }
 
       .user-info {
@@ -167,31 +168,22 @@
         background: #374151;
       }
 
-      a {
-        color: #7c3aed;
-      }
-
-      #guestInfo {
-        text-align: center;
-        padding: 100px 20px;
-      }
-
-      #guestInfo p {
-        font-size: 18px;
-        margin-bottom: 20px;
-      }
-
-      .welcome-section {
-        max-width: 1200px;
-      }
-
-      .welcome-section h2 {
-        font-size: 32px;
+      .page-title {
+        font-size: 36px;
         margin-bottom: 20px;
         color: #e6eef8;
+        display: flex;
+        align-items: center;
+        gap: 15px;
       }
 
-      .welcome-section p {
+      .page-title svg {
+        width: 36px;
+        height: 36px;
+        fill: #9ca3af;
+      }
+
+      .page-description {
         font-size: 18px;
         color: #9ca3af;
         line-height: 1.6;
@@ -201,14 +193,14 @@
   <body>
     <!-- Top Navigation Bar -->
     <div class="topbar">
-      <h1>CryptoFantasy</h1>
+      <h1 onclick="window.location.href='/'">CryptoFantasy</h1>
       <div id="userInfo" style="display: none" class="user-info">
         <span>Welcome, <strong id="username"></strong></span>
       </div>
     </div>
 
     <!-- Sidebar -->
-    <div id="sidebar" class="sidebar" style="display: none">
+    <div class="sidebar">
       <div>
         <button class="sidebar-btn active" onclick="navigateTo('portfolio')">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
@@ -249,24 +241,18 @@
 
     <!-- Main Content Area -->
     <div class="main-content">
-      <div id="guestInfo" style="display: none">
-        <p>
-          Please <a href="/login.html">login</a> or
-          <a href="/register.html">register</a> to continue.
-        </p>
-      </div>
-
-      <div
-        id="authenticatedContent"
-        style="display: none"
-        class="welcome-section"
-      >
-        <h2>Welcome to CryptoFantasy!</h2>
-        <p>
-          Track your cryptocurrency portfolio, explore coins, and compete in
-          leagues. Use the sidebar to navigate through the app.
-        </p>
-      </div>
+      <h1 class="page-title">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path
+            d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"
+          />
+        </svg>
+        Portfolio Page
+      </h1>
+      <p class="page-description">
+        This is the Portfolio page. Here you will be able to view and manage
+        your cryptocurrency holdings.
+      </p>
     </div>
 
     <script>
@@ -278,20 +264,17 @@
             document.getElementById("username").textContent =
               data.user.username;
             document.getElementById("userInfo").style.display = "flex";
-            document.getElementById("sidebar").style.display = "block";
-            document.getElementById("authenticatedContent").style.display =
-              "block";
           } else {
-            document.getElementById("guestInfo").style.display = "block";
+            window.location.href = "/login.html";
           }
         } catch (e) {
-          document.getElementById("guestInfo").style.display = "block";
+          window.location.href = "/login.html";
         }
       }
 
       async function logout() {
         await fetch("/api/logout", { method: "POST" });
-        window.location.reload();
+        window.location.href = "/";
       }
 
       function navigateTo(page) {

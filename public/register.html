@@ -303,7 +303,7 @@
               const data = await response.json();
 
               if (response.ok) {
-                window.location.href = "/dashboard.html";
+                window.location.href = "/index.html";
               } else {
                 const errMsg = data.error || "Registration failed";
                 if (errMsg.includes("email")) {
