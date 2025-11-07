@@ -9,6 +9,7 @@ import fs from "node:fs";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 8080;
+let CG_API_KEY = process.env.CG_API_KEY || null;
 
 // Load database config
 let dbConfig = null;
@@ -24,6 +25,9 @@ if (process.env.DATABASE_URL) {
     const envPath = path.join(__dirname, "env.json");
     if (fs.existsSync(envPath)) {
       const envData = JSON.parse(fs.readFileSync(envPath, "utf-8"));
+
+      if (!CG_API_KEY && envData.CG_API_KEY) CG_API_KEY = envData.CG_API_KEY;
+
       dbConfig = {
         user: envData.user,
         host: envData.host,
@@ -121,6 +125,11 @@ app.use(
   requireAuth,
   express.static(path.join(__dirname, "public"))
 );
+
+app.get("/coins.html", requireAuth, (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "coins.html"));
+});
+
 app.get("/portfolio.html", requireAuth, (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "portfolio.html"));
 });
@@ -188,6 +197,10 @@ async function initDB() {
   }
 }
 
+
+
+
+
 // Register endpoint
 app.post("/api/register", async (req, res) => {
   try {
@@ -232,6 +245,10 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
+
+
+
+
 // Login endpoint
 app.post("/api/login", async (req, res) => {
   try {
@@ -273,11 +290,19 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
+
+
+
+
 // Logout endpoint
 app.post("/api/logout", (req, res) => {
   req.session.destroy();
   res.json({ success: true });
 });
+
+
+
+
 
 // Get current user
 app.get("/api/me", requireAuth, async (req, res) => {
@@ -300,6 +325,31 @@ app.get("/api/me", requireAuth, async (req, res) => {
   }
 });
 
+
+
+
+// Get current coin data
+app.get("/api/cg/coins", async (req, res) => {
+  try {
+    const url =
+      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false";
+
+    const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
+
+    const data = await response.json();
+
+    res.json(data);
+  } catch (err) {
+    console.error("Error fetching CoinGecko data:", err);
+    res.status(500).json({ error: "Failed to fetch coins" });
+  }
+});
+
+
+
 // Get current price for a coin
 app.get("/api/price/:symbol", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
@@ -319,6 +369,8 @@ app.get("/api/price/:symbol", async (req, res) => {
   }
 });
 
+
+
 // Get all historical prices for a coin
 app.get("/api/prices/:symbol", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
@@ -337,6 +389,11 @@ app.get("/api/prices/:symbol", async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
+
+
+
+
 
 // Get portfolio: cash, holdings with live value, totals
 app.get("/api/portfolio", requireAuth, async (req, res) => {
@@ -364,7 +421,7 @@ app.get("/api/portfolio", requireAuth, async (req, res) => {
     );
 
     const cryptoValue = rows.reduce((sum, r) => sum + Number(r.market_value || 0), 0);
-    const totalValue  = cash + cryptoValue;
+    const totalValue = cash + cryptoValue;
 
     res.json({
       cash_usd: cash.toFixed(2),
@@ -376,6 +433,10 @@ app.get("/api/portfolio", requireAuth, async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
+
+
+
 
 // Trade ({ symbol, side: "BUY"|"SELL", quantity })
 app.post("/api/trade", requireAuth, async (req, res) => {
@@ -453,18 +514,18 @@ app.post("/api/trade", requireAuth, async (req, res) => {
       [req.session.userId]
     );
     const cash2 = Number((await pool.query("select cash_usd from portfolios where user_id = $1", [req.session.userId])).rows[0].cash_usd);
-    const cryptoValue = rows.reduce((s,r)=>s+Number(r.market_value||0),0);
+    const cryptoValue = rows.reduce((s, r) => s + Number(r.market_value || 0), 0);
 
     res.json({
       success: true,
       price_used_usd: px.toFixed(8),
       cash_usd: cash2.toFixed(2),
       crypto_value_usd: cryptoValue.toFixed(2),
-      total_value_usd: (cash2+cryptoValue).toFixed(2),
+      total_value_usd: (cash2 + cryptoValue).toFixed(2),
       holdings: rows
     });
   } catch (e) {
-    try { await pool.query("ROLLBACK"); } catch {}
+    try { await pool.query("ROLLBACK"); } catch { }
     res.status(500).json({ error: String(e) });
   }
 });
