@@ -350,6 +350,25 @@ app.get("/api/cg/coins", async (req, res) => {
 
 
 
+// Get current price for a coin
+app.get("/api/price/:symbol", async (req, res) => {
+  if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+  const symbol = (req.params.symbol || "").trim().toUpperCase();
+  if (!symbol) return res.status(400).json({ error: "symbol required" });
+
+  try {
+    const { rows } = await pool.query(
+      "select symbol, price_usd, fetched_at from prices_latest where symbol = $1",
+      [symbol]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "not found" });
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 
 
 // Get all historical prices for a coin
