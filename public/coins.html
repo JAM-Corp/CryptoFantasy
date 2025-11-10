@@ -156,8 +156,10 @@
         .coin-right {
             margin-left: auto;
             color: #e6eef8;
-            font-variant-numeric: tabular-nums;
             min-width: 120px;
+            text-align: right;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
         }
 
         .coin-row {
@@ -172,13 +174,18 @@
         }
 
         .coin-card {
-            display: flex;
-            padding: 16px 18px;
+            display: block;
+            align-items: center;
+            padding: 14px 18px;
+            height: 72px;
+            width: 100%;
             border-radius: 12px;
-            margin-bottom: 12px;
+            gap: 12px;
+            margin: 12px 0;
             background: rgba(255, 255, 255, 0.08);
             border: 1px solid rgba(255, 255, 255, 0.14);
             transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+            cursor: pointer;
         }
 
         .coin-card:hover {
@@ -199,37 +206,17 @@
                 inset 0 -2px 3px rgba(0, 0, 0, 0.08);
         }
 
+        #coins-container {
+            max-width: 480px;
+            margin: 0 auto;
+        }
+
         /* Main Content Area */
         .main-content {
             margin-left: 250px;
             margin-top: 60px;
-            padding: 40px;
+            padding: 40px 24px;
             min-height: calc(100vh - 60px);
-        }
-
-        .btn {
-            background: #7c3aed;
-            color: white;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 14px;
-            transition: background 0.3s ease;
-        }
-
-        .btn:hover {
-            background: #6d28d9;
-        }
-
-        .btn.secondary {
-            background: #4b5563;
-        }
-
-        .btn.secondary:hover {
-            background: #374151;
         }
 
         .page-title {
@@ -319,8 +306,7 @@
 
     <script>
         async function getCoins() {
-            const url = `/api/cg/coins`;
-            const r = await fetch(url);
+            const r = await fetch(`/api/cg/coins`);
             const data = await r.json();
 
             const STABLE = new Set(["usdt", "usdc", "dai", "tusd", "fdusd", "usdd"]);
@@ -381,7 +367,9 @@
                 row.appendChild(right);
                 card.appendChild(row);
 
-
+                card.addEventListener("click", () => {
+                    window.location.href = `/coin-detail.html?id=${coin.id}&symbol=${coin.symbol}&price=${coin.current_price}`;
+                });
 
                 coinsContainer.appendChild(card);
             });
