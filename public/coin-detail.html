@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+
+    <title>Coins - CryptoFantasy</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: #0f1724;
+            color: #e6eef8;
+            overflow-x: hidden;
+        }
+
+        /* Top Navigation Bar */
+        .topbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 60px;
+            background: rgba(15, 23, 36, 0.95);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 100;
+        }
+
+        .topbar h1 {
+            font-size: 24px;
+            color: #7c3aed;
+            cursor: pointer;
+        }
+
+        .user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .user-info span {
+            font-size: 14px;
+            color: #e6eef8;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            width: 250px;
+            height: calc(100vh - 60px);
+            background: rgba(255, 255, 255, 0.05);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 0;
+        }
+
+        .sidebar-btn {
+            width: 100%;
+            background: transparent;
+            color: #e6eef8;
+            padding: 15px 20px;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .sidebar-btn:hover {
+            background: rgba(124, 58, 237, 0.2);
+            border-left-color: #7c3aed;
+        }
+
+        .sidebar-btn.active {
+            background: rgba(124, 58, 237, 0.3);
+            border-left-color: #7c3aed;
+            color: #7c3aed;
+        }
+
+        .sidebar-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: #9ca3af;
+            transition: fill 0.3s ease;
+        }
+
+        .sidebar-btn:hover svg,
+        .sidebar-btn.active svg {
+            fill: #7c3aed;
+        }
+
+        .sidebar-footer {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            padding: 20px 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .logout-btn {
+            width: 100%;
+            background: transparent;
+            color: #ef4444;
+            padding: 15px 20px;
+            border: none;
+            text-align: left;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .logout-btn svg {
+            width: 20px;
+            height: 20px;
+            fill: #ef4444;
+        }
+
+        .back-btn {
+            margin-left: auto;
+            background-color: #ef4444;
+            color: #e6eef8;
+            border: none;
+            padding: 8px 12px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 12px;
+        }
+
+        /* Title area */
+        #page-title-name {
+            display: block;
+            margin-bottom: 6px;
+            color: #c4b5fd;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            font-size: 14px;
+        }
+
+        .page-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #page-title-symbol {
+            font-size: 44px;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: 6px;
+        }
+
+        #price-snapshot {
+            font-size: 36px;
+            font-weight: 600;
+            color: #efeef8;
+            margin-top: 8px;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            margin-left: 250px;
+            margin-top: 60px;
+            padding: 40px;
+            min-height: calc(100vh - 60px);
+        }
+
+        #chart-card {
+            width: 900px;
+            height: 420px;
+            margin: 24px auto;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            padding: 16px 16px 52px;
+            position: relative;
+        }
+
+        .range-toolbar {
+            position: absolute;
+            left: 50%;
+            bottom: 10px;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+        }
+
+        .range-btn {
+            appearance: none;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            background: rgba(255, 255, 255, 0.06);
+            color: #e6eef8;
+            padding: 6px 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: background .15s ease, border-color .15s ease;
+        }
+
+        .range-btn:hover {
+            background: rgba(255, 255, 255, 0.10);
+        }
+
+        .range-btn.active {
+            border-color: #7c3aed;
+            background: rgba(124, 58, 237, 0.25);
+        }
+
+        .stats-row {
+            width: min(900px, calc(100vw - 360px));
+            margin: 12px auto 0;
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .stat {
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 10px;
+            padding: 12px 14px;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: #a9b4c6;
+            margin-bottom: 4px;
+            letter-spacing: .02em;
+            text-transform: uppercase;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #e6eef8;
+            font-variant-numeric: tabular-nums;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Top Navigation Bar -->
+    <div class="topbar">
+        <h1 onclick="window.location.href='index.html'">CryptoFantasy</h1>
+        <div id="userInfo" style="display: none" class="user-info">
+            <span><strong id="username"></strong></span>
+        </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">
+        <div>
+            <button class="sidebar-btn" onclick="navigateTo('portfolio')">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" />
+                </svg>
+                Portfolio
+            </button>
+            <button class="sidebar-btn active" onclick="navigateTo('coins')">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path
+                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm.31-8.86c-1.77-.45-2.34-.94-2.34-1.67 0-.84.79-1.43 2.1-1.43 1.38 0 1.9.66 1.94 1.64h1.71c-.05-1.34-.87-2.57-2.49-2.97V5H10.9v1.69c-1.51.32-2.72 1.3-2.72 2.81 0 1.79 1.49 2.69 3.66 3.21 1.95.46 2.34 1.15 2.34 1.87 0 .53-.39 1.39-2.1 1.39-1.6 0-2.23-.72-2.32-1.64H8.04c.1 1.7 1.36 2.66 2.86 2.97V19h2.34v-1.67c1.52-.29 2.72-1.16 2.73-2.77-.01-2.2-1.9-2.96-3.66-3.42z" />
+                </svg>
+                Coins
+            </button>
+            <button class="sidebar-btn" onclick="navigateTo('league')">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path
+                        d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                </svg>
+                League
+            </button>
+        </div>
+        <div class="sidebar-footer">
+            <button class="logout-btn" onclick="logout()">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <path
+                        d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z" />
+                </svg>
+                Logout
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+        <span id="page-title-name"></span>
+        <h1 class="page-title">
+            <span id="page-title-symbol"></span>
+            <button class="back-btn" onclick="navigateTo('coins')">Back</button>
+        </h1>
+        <p id="price-snapshot"></p>
+        <div id="chart-card">
+            <canvas id="priceChart"></canvas>
+            <div class="range-toolbar">
+                <button class="range-btn" data-range="1W">1W</button>
+                <button class="range-btn" data-range="1M">1M</button>
+                <button class="range-btn" data-range="3M">3M</button>
+                <button class="range-btn active" data-range="1Y">1Y</button>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat">
+                <div class="stat-label">Market Cap</div>
+                <div class="stat-value" id="stat-marketcap">—</div>
+            </div>
+            <div class="stat">
+                <div class="stat-label">24h Volume</div>
+                <div class="stat-value" id="stat-volume">—</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const coinId = params.get("id");
+        const coinSymbol = params.get("symbol");
+        const coinPrice = params.get("price");
+
+        document.getElementById("page-title-name").textContent = coinId.toUpperCase();
+        document.getElementById("page-title-symbol").textContent = coinSymbol.toUpperCase();
+        document.getElementById("price-snapshot").textContent = `$${Number(coinPrice).toFixed(2)}`;
+
+        let chart;
+        let allPricesPoints = [];
+        const RANGE = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+
+        function sliceData(range) {
+            const n = RANGE[range] ?? 365;
+            const len = allPricesPoints.length;
+            return len <= n ? allPricesPoints : allPricesPoints.slice(len - n);
+        }
+
+        function setActive(range) {
+            document.querySelectorAll(".range-btn").forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.range === range);
+            });
+        }
+
+        function formatLargeNum(num) {
+            const abs = Math.abs(num);
+            const units = [
+                {val: 1e12, unit: "T" },
+                {val: 1e9,  unit: "B" },
+                {val: 1e6,  unit: "M" },
+                {val: 1e3,  unit: "K" },
+            ];
+
+            for (const {val, unit} of units) {
+                if (abs >= val) {
+                    const roundedNum = num / val;
+                    const dec = roundedNum >= 100 ? 0 : roundedNum >= 10 ? 1 : 2;
+                    return `$${roundedNum.toFixed(dec)}${unit}`
+                }
+            }
+
+            return `$${Math.round(num).toLocaleString()}`;
+        }
+
+        async function loadCoinDetail() {
+            const days = 365;
+            const r = await fetch(`/api/cg/coins/${coinId}/market_chart?days=${days}`);
+            const rawData = await r.json();
+
+            allPricesPoints = (rawData.prices ?? []).map(([t, p]) => ({ x: t, y: p }));
+            const mcap = rawData.market_caps ?? [];
+            const vol = rawData.total_volumes ?? [];
+            const latestMcap = mcap.length ? mcap[mcap.length - 1][1] : null;
+            const latestVol = vol.length ? vol[vol.length - 1][1] : null;
+
+            document.getElementById("stat-marketcap").textContent = formatLargeNum(latestMcap);
+            document.getElementById("stat-volume").textContent = formatLargeNum(latestVol);
+
+
+            drawChart(sliceData("1Y"));
+
+            document.querySelectorAll(".range-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    const range = btn.dataset.range;
+                    setActive(range);
+                    const sliced = sliceData(range);
+                    chart.data.datasets[0].data = sliced;
+                    chart.update();
+                });
+            });
+        }
+
+        function drawChart(dataPoints) {
+            const ctx = document.getElementById("priceChart").getContext("2d");
+            if (chart) chart.destroy();
+
+            chart = new Chart(ctx, {
+                type: "line",
+                data: {
+                    datasets: [{
+                        label: `${coinSymbol.toUpperCase()} Price`,
+                        data: dataPoints,
+                        parsing: false,
+                        borderColor: "#7c3aed",
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.25,
+                    }]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            intersect: false,
+                            mode: "index",
+                            callbacks: {
+                                label: (ctx) => {
+                                    const v = ctx.parsed.y;
+                                    return `$${v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: "time",
+                            display: false,
+                            time: { unit: "day" },
+                            grid: { color: "rgba(255,255,255,0.08)" },
+                        },
+                        y: {
+
+                            grid: { color: "rgba(255,255,255,0.08)" },
+                            ticks: {
+                                color: "#a9b4c6",
+                                callback: (v) => `$${Number(v).toLocaleString()}`
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        async function logout() {
+            await fetch("/api/logout", { method: "POST" });
+            window.location.href = "/";
+        }
+
+        function navigateTo(page) {
+            window.location.href = `/${page}.html`;
+        }
+
+        loadCoinDetail();
+    </script>
+</body>
+
+</html>

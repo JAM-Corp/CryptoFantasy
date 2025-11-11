@@ -334,7 +334,7 @@ app.get("/api/cg/coins", async (req, res) => {
     const url =
       "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false";
 
-    const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
+    const headers = CG_API_KEY ? { "x_cg_demo_api_key": CG_API_KEY } : {};
     const response = await fetch(url, { headers });
 
     if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
@@ -343,8 +343,29 @@ app.get("/api/cg/coins", async (req, res) => {
 
     res.json(data);
   } catch (err) {
-    console.error("Error fetching CoinGecko data:", err);
+    console.error("Error fetching CoinGecko coins:", err);
     res.status(500).json({ error: "Failed to fetch coins" });
+  }
+});
+
+// Get historical coin chart data
+app.get("/api/cg/coins/:id/market_chart", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const days = req.query.days
+
+    const url = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`;
+    const headers = CG_API_KEY ? { "x_cg_demo_api_key": CG_API_KEY } : {};
+    
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
+
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Error fetching CoinGecko market_chart:", err);
+    res.status(500).json({ error: "Failed to fetch market data" });
   }
 });
 
