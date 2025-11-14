@@ -225,7 +225,7 @@
       </form>
 
       <p class="meta">
-        Already have an account? <a href="/login.html">Sign in</a>
+        Already have an account? <a href="/login">Sign in</a>
       </p>
 
       <script>
@@ -303,7 +303,7 @@
               const data = await response.json();
 
               if (response.ok) {
-                window.location.href = "/index.html";
+                window.location.href = "/index";
               } else {
                 const errMsg = data.error || "Registration failed";
                 if (errMsg.includes("email")) {

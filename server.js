@@ -8,8 +8,16 @@ import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+app.set("view engine", "ejs");
+app.set("views", path.join(__dirname, "views"));
+app.use(express.static(path.join(__dirname, "public")));
+
 const PORT = process.env.PORT || 8080;
 let CG_API_KEY = process.env.CG_API_KEY || null;
+
+const cgChartCache = new Map();
+const CG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 mins
 
 // Load database config
 let dbConfig = null;
@@ -72,7 +80,7 @@ function requireAuth(req, res, next) {
   if (req.session.userId) {
     next();
   } else {
-    res.redirect("/login.html");
+    res.redirect("/login");
   }
 }
 
@@ -103,50 +111,25 @@ function validateSymbol(raw) {
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
   if (req.session.userId) {
-    res.redirect("/index.html");
+    return res.redirect("/index");
   } else {
-    res.redirect("/login.html");
+    return res.redirect("/login");
   }
 });
 
 // Public routes (no auth required)
-app.use(
-  "/login.html",
-  express.static(path.join(__dirname, "public", "login.html"))
-);
-app.use(
-  "/register.html",
-  express.static(path.join(__dirname, "public", "register.html"))
-);
+app.get("/login", (_req, res) => res.render("login"));
+app.get("/register", (_req, res) => res.render("register"));
+
 
 // Protected routes - require authentication
-app.use(
-  "/index.html",
-  requireAuth,
-  express.static(path.join(__dirname, "public"))
-);
+app.get("/index", requireAuth, (req, res) => res.render("index"));
+app.get("/league", requireAuth, (req, res) => res.render("league"));
+app.get("/coins", requireAuth, (req, res) => res.render("coins"));
+app.get("/coin-detail", requireAuth, (req, res) => res.render("coin-detail"));
+app.get("/portfolio", requireAuth, (req, res) => res.render("portfolio"));
+app.get("/trade", requireAuth, (req, res) => res.render("trade"));
 
-app.get("/coins.html", requireAuth, (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "coins.html"));
-});
-
-app.get("/portfolio.html", requireAuth, (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "portfolio.html"));
-});
-app.get("/trade.html", requireAuth, (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "trade.html"));
-});
-
-
-// All other static files require auth
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    setHeaders: (res, path) => {
-      if (!path.endsWith("login.html") && !path.endsWith("register.html")) {
-      }
-    },
-  })
-);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -334,7 +317,7 @@ app.get("/api/cg/coins", async (req, res) => {
     const url =
       "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false";
 
-    const headers = CG_API_KEY ? { "x_cg_demo_api_key": CG_API_KEY } : {};
+    const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
     const response = await fetch(url, { headers });
 
     if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
@@ -352,16 +335,30 @@ app.get("/api/cg/coins", async (req, res) => {
 app.get("/api/cg/coins/:id/market_chart", async (req, res) => {
   try {
     const id = req.params.id;
-    const days = req.query.days
+    const days = req.query.days;
+    const key = `${id}|${days}`;
+    const now = Date.now();
+
+    const cached = cgChartCache.get(key);
+    if (cached && now - cached.ts < CG_CACHE_TTL_MS) {
+      return res.json(cached.data);
+    }
 
     const url = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`;
-    const headers = CG_API_KEY ? { "x_cg_demo_api_key": CG_API_KEY } : {};
+    const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
     
     const response = await fetch(url, { headers });
+    const txt = await response.text();
 
-    if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
+    if (!response.ok) {
+      console.error("CG market_chart error:", response.status, txt);
+      return res.status(response.status).json({ error: `CoinGecko ${response.status}`, details: txt})
+    }
 
-    const data = await response.json();
+    const data = JSON.parse(txt);
+
+    cgChartCache.set(key, { ts: now, data });
+
     res.json(data);
   } catch (err) {
     console.error("Error fetching CoinGecko market_chart:", err);

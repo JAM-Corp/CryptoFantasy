@@ -1,0 +1,20 @@
+<div class="topbar">
+    <h1 onclick="window.location.href='/index'">CryptoFantasy</h1>
+    <div class="user-info">
+        <span id="username">Loading...</span>
+    </div>
+</div>
+<script>
+    (async () => {
+        try {
+            const res = await fetch("/api/me");
+            if (res.ok) {
+                const data = await res.json();
+                document.getElementById("username").textContent =
+                    data.user.username;
+            }
+        } catch (e) {
+            console.error("Error fetching user info:", e);
+        }
+    })();
+</script>

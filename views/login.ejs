@@ -235,7 +235,7 @@
         </div>
       </form>
 
-      <p class="meta">No account? <a href="/register.html">Sign up</a></p>
+      <p class="meta">No account? <a href="/register">Sign up</a></p>
 
       <script>
         (function () {
@@ -289,7 +289,7 @@
               const data = await response.json();
 
               if (response.ok) {
-                window.location.href = "/index.html";
+                window.location.href = "/index";
               } else {
                 pwErr.textContent = data.error || "Login failed";
                 pwErr.style.display = "block";
