@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import bcrypt from "bcrypt";
 import session from "express-session";
 import fs from "node:fs";
+import makeTradeRoutes from "./scripts/trade.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -54,10 +55,13 @@ if (process.env.DATABASE_URL) {
 
 const pool = dbConfig ? new Pool(dbConfig) : null;
 
-// Allowed coins for PoC (coingecko ids, e.g., BITCOIN, ETHEREUM)
-const COIN_WHITELIST = (process.env.COIN_WHITELIST || process.env.CG_IDS || "bitcoin,ethereum,solana")
+const COIN_WHITELIST = (
+  process.env.COIN_WHITELIST ||
+  process.env.CG_IDS ||
+  "bitcoin,ethereum,solana"
+)
   .split(",")
-  .map(s => s.trim().toUpperCase())
+  .map((s) => s.trim().toUpperCase())
   .filter(Boolean);
 
 // Middleware
@@ -107,7 +111,6 @@ function validateSymbol(raw) {
   return s;
 }
 
-
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
   if (req.session.userId) {
@@ -121,15 +124,16 @@ app.get("/", (req, res) => {
 app.get("/login", (_req, res) => res.render("login"));
 app.get("/register", (_req, res) => res.render("register"));
 
-
 // Protected routes - require authentication
 app.get("/index", requireAuth, (req, res) => res.render("index"));
 app.get("/league", requireAuth, (req, res) => res.render("league"));
 app.get("/coins", requireAuth, (req, res) => res.render("coins"));
 app.get("/coin-detail", requireAuth, (req, res) => res.render("coin-detail"));
 app.get("/portfolio", requireAuth, (req, res) => res.render("portfolio"));
-app.get("/trade", requireAuth, (req, res) => res.render("trade"));
 
+// use trade routes module to keep logic out of server.js
+const tradeRoutes = makeTradeRoutes({ pool, COIN_WHITELIST });
+app.get("/trade", requireAuth, tradeRoutes.tradeGet);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
@@ -180,10 +184,6 @@ async function initDB() {
   }
 }
 
-
-
-
-
 // Register endpoint
 app.post("/api/register", async (req, res) => {
   try {
@@ -228,10 +228,6 @@ app.post("/api/register", async (req, res) => {
   }
 });
 
-
-
-
-
 // Login endpoint
 app.post("/api/login", async (req, res) => {
   try {
@@ -273,19 +269,11 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-
-
-
-
 // Logout endpoint
 app.post("/api/logout", (req, res) => {
   req.session.destroy();
   res.json({ success: true });
 });
-
-
-
-
 
 // Get current user
 app.get("/api/me", requireAuth, async (req, res) => {
@@ -307,9 +295,6 @@ app.get("/api/me", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to get user" });
   }
 });
-
-
-
 
 // Get current coin data
 app.get("/api/cg/coins", async (req, res) => {
@@ -346,13 +331,15 @@ app.get("/api/cg/coins/:id/market_chart", async (req, res) => {
 
     const url = `https://api.coingecko.com/api/v3/coins/${id}/market_chart?vs_currency=usd&days=${days}`;
     const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
-    
+
     const response = await fetch(url, { headers });
     const txt = await response.text();
 
     if (!response.ok) {
       console.error("CG market_chart error:", response.status, txt);
-      return res.status(response.status).json({ error: `CoinGecko ${response.status}`, details: txt})
+      return res
+        .status(response.status)
+        .json({ error: `CoinGecko ${response.status}`, details: txt });
     }
 
     const data = JSON.parse(txt);
@@ -365,8 +352,6 @@ app.get("/api/cg/coins/:id/market_chart", async (req, res) => {
     res.status(500).json({ error: "Failed to fetch market data" });
   }
 });
-
-
 
 // Get current price for a coin
 app.get("/api/price/:symbol", async (req, res) => {
@@ -387,8 +372,6 @@ app.get("/api/price/:symbol", async (req, res) => {
   }
 });
 
-
-
 // Get all historical prices for a coin
 app.get("/api/prices/:symbol", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
@@ -407,11 +390,6 @@ app.get("/api/prices/:symbol", async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
-
-
-
-
-
 
 // Get portfolio: cash, holdings with live value, totals
 app.get("/api/portfolio", requireAuth, async (req, res) => {
@@ -438,23 +416,22 @@ app.get("/api/portfolio", requireAuth, async (req, res) => {
       [req.session.userId]
     );
 
-    const cryptoValue = rows.reduce((sum, r) => sum + Number(r.market_value || 0), 0);
+    const cryptoValue = rows.reduce(
+      (sum, r) => sum + Number(r.market_value || 0),
+      0
+    );
     const totalValue = cash + cryptoValue;
 
     res.json({
       cash_usd: cash.toFixed(2),
       crypto_value_usd: cryptoValue.toFixed(2),
       total_value_usd: totalValue.toFixed(2),
-      holdings: rows
+      holdings: rows,
     });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
 });
-
-
-
-
 
 // Trade ({ symbol, side: "BUY"|"SELL", quantity })
 app.post("/api/trade", requireAuth, async (req, res) => {
@@ -465,21 +442,27 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     const qty = Number(quantity);
 
     if (!symbolU) return res.status(400).json({ error: "symbol not allowed" });
-    if (sideU !== "BUY" && sideU !== "SELL") return res.status(400).json({ error: "side must be BUY or SELL" });
-    if (!Number.isFinite(qty) || qty <= 0) return res.status(400).json({ error: "quantity must be > 0" });
+    if (sideU !== "BUY" && sideU !== "SELL")
+      return res.status(400).json({ error: "side must be BUY or SELL" });
+    if (!Number.isFinite(qty) || qty <= 0)
+      return res.status(400).json({ error: "quantity must be > 0" });
 
     await ensurePortfolio(req.session.userId);
 
     // fetch price
     const price = await getCurrentPrice(symbolU);
-    if (!price) return res.status(400).json({ error: "no current price; try later" });
+    if (!price)
+      return res.status(400).json({ error: "no current price; try later" });
     const px = Number(price);
     const cost = +(px * qty).toFixed(8); // positive number
 
     await pool.query("BEGIN");
 
     // load current cash & qty with FOR UPDATE
-    const cashRow = await pool.query("select cash_usd from portfolios where user_id = $1 for update", [req.session.userId]);
+    const cashRow = await pool.query(
+      "select cash_usd from portfolios where user_id = $1 for update",
+      [req.session.userId]
+    );
     const cash = Number(cashRow.rows[0].cash_usd);
 
     const hRow = await pool.query(
@@ -493,7 +476,10 @@ app.post("/api/trade", requireAuth, async (req, res) => {
         await pool.query("ROLLBACK");
         return res.status(400).json({ error: "insufficient cash" });
       }
-      await pool.query("update portfolios set cash_usd = cash_usd - $1 where user_id = $2", [cost, req.session.userId]);
+      await pool.query(
+        "update portfolios set cash_usd = cash_usd - $1 where user_id = $2",
+        [cost, req.session.userId]
+      );
       await pool.query(
         `insert into holdings (user_id, symbol, qty)
          values ($1, $2, $3)
@@ -511,9 +497,18 @@ app.post("/api/trade", requireAuth, async (req, res) => {
         await pool.query("ROLLBACK");
         return res.status(400).json({ error: "insufficient quantity" });
       }
-      await pool.query("update portfolios set cash_usd = cash_usd + $1 where user_id = $2", [cost, req.session.userId]);
-      await pool.query("update holdings set qty = qty - $1 where user_id = $2 and symbol = $3", [qty, req.session.userId, symbolU]);
-      await pool.query("delete from holdings where user_id = $1 and symbol = $2 and qty <= 0", [req.session.userId, symbolU]);
+      await pool.query(
+        "update portfolios set cash_usd = cash_usd + $1 where user_id = $2",
+        [cost, req.session.userId]
+      );
+      await pool.query(
+        "update holdings set qty = qty - $1 where user_id = $2 and symbol = $3",
+        [qty, req.session.userId, symbolU]
+      );
+      await pool.query(
+        "delete from holdings where user_id = $1 and symbol = $2 and qty <= 0",
+        [req.session.userId, symbolU]
+      );
       await pool.query(
         `insert into trades (user_id, symbol, side, qty, price_usd, cost_usd)
          values ($1,$2,'SELL',$3,$4,$5)`,
@@ -531,8 +526,17 @@ app.post("/api/trade", requireAuth, async (req, res) => {
        where h.user_id = $1 order by h.symbol`,
       [req.session.userId]
     );
-    const cash2 = Number((await pool.query("select cash_usd from portfolios where user_id = $1", [req.session.userId])).rows[0].cash_usd);
-    const cryptoValue = rows.reduce((s, r) => s + Number(r.market_value || 0), 0);
+    const cash2 = Number(
+      (
+        await pool.query("select cash_usd from portfolios where user_id = $1", [
+          req.session.userId,
+        ])
+      ).rows[0].cash_usd
+    );
+    const cryptoValue = rows.reduce(
+      (s, r) => s + Number(r.market_value || 0),
+      0
+    );
 
     res.json({
       success: true,
@@ -540,10 +544,12 @@ app.post("/api/trade", requireAuth, async (req, res) => {
       cash_usd: cash2.toFixed(2),
       crypto_value_usd: cryptoValue.toFixed(2),
       total_value_usd: (cash2 + cryptoValue).toFixed(2),
-      holdings: rows
+      holdings: rows,
     });
   } catch (e) {
-    try { await pool.query("ROLLBACK"); } catch { }
+    try {
+      await pool.query("ROLLBACK");
+    } catch {}
     res.status(500).json({ error: String(e) });
   }
 });
