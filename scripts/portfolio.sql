@@ -1,20 +1,33 @@
+create table if not exists leagues (
+  id             serial primary key,
+  name           text    not null,
+  owner_user_id  integer not null references users(id) on delete cascade,
+  join_code      text    not null unique,
+  member_limit   integer,
+  created_at     timestamptz not null default now()
+);
+
 create table if not exists portfolios (
-  user_id    integer primary key references users(id) on delete cascade,
+  user_id    integer not null references users(id) on delete cascade,
+  league_id  integer not null references leagues(id) on delete cascade,
   cash_usd   numeric(20,8) not null default 100000.0,
-  created_at timestamptz   not null default now()
+  created_at timestamptz   not null default now(),
+  primary key (user_id, league_id)
 );
 
 create table if not exists holdings (
-  user_id integer not null references users(id) on delete cascade,
-  symbol  text    not null,
-  qty     numeric(30,12) not null default 0,
-  primary key (user_id, symbol),
+  user_id   integer not null references users(id) on delete cascade,
+  league_id integer not null references leagues(id) on delete cascade,
+  symbol    text    not null,
+  qty       numeric(30,12) not null default 0,
+  primary key (user_id, league_id, symbol),
   check (qty >= 0)
 );
 
 create table if not exists trades (
   id         bigserial primary key,
   user_id    integer not null references users(id) on delete cascade,
+  league_id  integer not null references leagues(id) on delete cascade,
   symbol     text    not null,
   side       text    not null check (side in ('BUY','SELL')),
   qty        numeric(30,12) not null check (qty > 0),
@@ -23,4 +36,5 @@ create table if not exists trades (
   created_at timestamptz    not null default now()
 );
 
-create index if not exists idx_trades_user_time on trades(user_id, created_at desc);
+create index if not exists idx_trades_user_league_time
+  on trades(user_id, league_id, created_at desc);

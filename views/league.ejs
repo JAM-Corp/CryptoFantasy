@@ -569,18 +569,47 @@
         document.getElementById("createLeagueForm").reset();
       }
 
-      function handleCreateLeague(event) {
+      async function handleCreateLeague(event) {
         event.preventDefault();
-        const leagueName = document.getElementById("leagueName").value;
-        const memberCount = document.getElementById("memberCount").value;
+        const leagueName = document.getElementById("leagueName").value.trim();
+        const memberCount = document.getElementById("memberCount").value.trim() || null;
 
-        // TODO: Implement league creation logic
-        console.log("Creating league:", { leagueName, memberCount });
+        if (!leagueName) {
+          alert("Please enter a league name.");
+          return;
+        }
 
-        closeCreateModal();
-        alert(
-          `League "${leagueName}" created successfully! (This is a placeholder - backend integration needed)`
-        );
+        try {
+          const res = await fetch("/api/leagues", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: leagueName,
+              memberCount,
+            }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            alert(data.error || "Failed to create league");
+            return;
+          }
+
+          closeCreateModal();
+
+          const league = data.league;
+          let msg = `League "${league.name}" created successfully!\n\n`;
+          if (league.inviteUrl) {
+            msg += `Invite URL:\n${league.inviteUrl}\n\n`;
+          }
+          if (league.joinCode) {
+            msg += `Join Code: ${league.joinCode}`;
+          }
+          alert(msg);
+        } catch (err) {
+          console.error("handleCreateLeague error:", err);
+          alert("Network error creating league. Please try again.");
+        }
       }
 
       // ========================================
@@ -595,17 +624,35 @@
         document.getElementById("joinLeagueForm").reset();
       }
 
-      function handleJoinLeague(event) {
+      async function handleJoinLeague(event) {
         event.preventDefault();
-        const leagueCode = document.getElementById("leagueCode").value;
+        const leagueCode = document.getElementById("leagueCode").value.trim();
 
-        // TODO: Implement league join logic
-        console.log("Joining league with code:", leagueCode);
+        if (!leagueCode) {
+          alert("Please enter a league code.");
+          return;
+        }
 
-        closeJoinModal();
-        alert(
-          `Joining league with code: ${leagueCode} (This is a placeholder - backend integration needed)`
-        );
+        try {
+          const res = await fetch("/api/leagues/join", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ leagueCode }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            alert(data.error || "Failed to join league");
+            return;
+          }
+
+          closeJoinModal();
+          alert(`Joined league "${data.league.name}" successfully!`);
+          // Optionally: window.location.reload();
+        } catch (err) {
+          console.error("handleJoinLeague error:", err);
+          alert("Network error joining league. Please try again.");
+        }
       }
 
       // ========================================
