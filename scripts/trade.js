@@ -1,6 +1,6 @@
 // Encapsulate trade page GET logic: build coins list (with latest prices)
 // and fetch user's holdings if DB is available.
-export default function makeTradeRoutes({ pool, COIN_WHITELIST }) {
+export default function makeTradeRoutes({ pool, COIN_WHITELIST, getOrCreateCurrentLeagueId }) {
   return {
     tradeGet: async (req, res) => {
       try {
@@ -20,27 +20,43 @@ export default function makeTradeRoutes({ pool, COIN_WHITELIST }) {
           }));
         }
 
-        // Fetch user holdings if DB available and user has portfolio
         let holdings = [];
+        let balance = "0.00";
+
         if (pool) {
-          try {
-            const { rows: hrows } = await pool.query(
-              "select symbol, qty::text as qty from holdings where user_id = $1 order by symbol",
-              [req.session.userId]
-            );
-            holdings = hrows;
-          } catch (e) {
-            // ignore holdings failure, render page without holdings
-            holdings = [];
+          const leagueId = await getOrCreateCurrentLeagueId(req);
+
+          await pool.query(
+            `insert into portfolios (user_id, league_id)
+             values ($1, $2)
+             on conflict (user_id, league_id) do nothing`,
+            [req.session.userId, leagueId]
+          );
+
+          const cashRow = await pool.query(
+            "select cash_usd from portfolios where user_id = $1 and league_id = $2",
+            [req.session.userId, leagueId]
+          );
+          if (cashRow.rows.length) {
+            balance = Number(cashRow.rows[0].cash_usd).toFixed(2);
           }
+
+          const { rows: hrows } = await pool.query(
+            `select symbol, qty::text as qty
+             from holdings
+             where user_id = $1 and league_id = $2
+             order by symbol`,
+            [req.session.userId, leagueId]
+          );
+          holdings = hrows;
         }
 
-        // Placeholder balance for now
-        res.render("trade", { coins, balance: "10000.00", holdings });
+        res.render("trade", { coins, balance, holdings });
       } catch (e) {
+        console.error("tradeGet error:", e);
         res.render("trade", {
           coins: COIN_WHITELIST.map((s) => ({ symbol: s, price_usd: null })),
-          balance: "10000.00",
+          balance: "0.00",
           holdings: [],
         });
       }

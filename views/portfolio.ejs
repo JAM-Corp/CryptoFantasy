@@ -175,18 +175,43 @@
     <div class="main-content">
       <div class="page-header">
         <h2>Portfolio</h2>
+        <div id="active-league-label"
+             style="margin-top: 6px; font-size: 13px; color: #9ca3af;">
+          League: <span id="active-league-name">Loading...</span>
+        </div>
       </div>
       <pre id="out">Loading...</pre>
     </div>
 
     <script>
-
-      // Fetch and display portfolio data
       (async () => {
-        const r = await fetch("/api/portfolio");
-        const j = await r.json();
-        out.textContent = JSON.stringify(j, null, 2);
+        try {
+          try {
+            const rLeague = await fetch("/api/leagues/active");
+            if (rLeague.ok) {
+              const data = await rLeague.json();
+              const nameEl = document.getElementById("active-league-name");
+              if (data.activeLeague && nameEl) {
+                nameEl.textContent = data.activeLeague.name;
+              } else if (nameEl) {
+                nameEl.textContent = "None (create or join from Leagues page)";
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to load active league", e);
+          }
+
+          const r = await fetch("/api/portfolio");
+          const j = await r.json();
+          const out = document.getElementById("out");
+          out.textContent = JSON.stringify(j, null, 2);
+        } catch (err) {
+          console.error("Error loading portfolio:", err);
+          const out = document.getElementById("out");
+          out.textContent = "Error loading portfolio.";
+        }
       })();
     </script>
+
   </body>
 </html>

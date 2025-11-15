@@ -512,6 +512,10 @@
     <div class="main-content">
       <div class="page-header">
         <h2>Trade Cryptocurrency</h2>
+        <div id="active-league-label"
+             style="margin-top: 4px; font-size: 13px; color: #9ca3af;">
+          League: <span id="active-league-name">Loading...</span>
+        </div>
       </div>
 
       <!-- Balance Card -->
@@ -667,6 +671,22 @@
     </div>
 
     <script>
+      (async () => {
+        try {
+          const r = await fetch("/api/leagues/active");
+          if (!r.ok) return;
+          const data = await r.json();
+          const nameEl = document.getElementById("active-league-name");
+          if (data.activeLeague && nameEl) {
+            nameEl.textContent = data.activeLeague.name;
+          } else if (nameEl) {
+            nameEl.textContent = "None";
+          }
+        } catch (e) {
+          console.warn("Failed to fetch active league", e);
+        }
+      })();
+
       let selectedSide = "BUY";
 
       // Local copy of coin data passed from server
@@ -684,15 +704,25 @@
         el.innerHTML = list
           .map(h => {
             const qtyNum = Number(h.qty);
-            const displayQty = Number.isFinite(qtyNum) ? qtyNum.toLocaleString(undefined, { maximumFractionDigits: 3 }) : h.qty;
-            const marketVal = (h.market_value !== undefined) ? Number(h.market_value) : (h.price_usd !== undefined ? Number(h.price_usd) * Number(h.qty || 0) : null);
-            const displayVal = marketVal !== null && Number.isFinite(marketVal) ? `$${marketVal.toFixed(2)}` : '';
+            const displayQty = Number.isFinite(qtyNum)
+              ? qtyNum.toLocaleString(undefined, { maximumFractionDigits: 3 })
+              : h.qty;
+            const marketVal =
+              h.market_value !== undefined
+                ? Number(h.market_value)
+                : (h.price_usd !== undefined
+                    ? Number(h.price_usd) * Number(h.qty || 0)
+                    : null);
+            const displayVal =
+              marketVal !== null && Number.isFinite(marketVal)
+                ? `$${marketVal.toFixed(2)}`
+                : "";
             return `
               <div class="holding-row">
                 <div class="h-left"><span class="h-symbol">${h.symbol}</span></div>
                 <div class="h-right">
                   <span class="h-qty" title="${h.qty}">${displayQty}</span>
-                  ${displayVal ? `<span class="h-value">${displayVal}</span>` : ''}
+                  ${displayVal ? `<span class="h-value">${displayVal}</span>` : ""}
                 </div>
               </div>
             `;
@@ -706,18 +736,19 @@
       // Fetch latest portfolio (balance + holdings) from server to ensure fresh data
       async function loadPortfolio() {
         try {
-          const r = await fetch('/api/portfolio');
+          const r = await fetch("/api/portfolio");
           if (!r.ok) return; // likely not authenticated or no db
           const j = await r.json();
-          if (j && typeof j.cash_usd !== 'undefined') {
-            document.querySelector('.balance-amount').textContent = `$${j.cash_usd}`;
+          if (j && typeof j.cash_usd !== "undefined") {
+            const balEl = document.querySelector(".balance-amount");
+            if (balEl) balEl.textContent = `$${j.cash_usd}`;
           }
           if (j && Array.isArray(j.holdings)) {
-            renderHoldings(j.holdings.map(h => ({ symbol: h.symbol, qty: h.qty })));
+            renderHoldings(j.holdings);
           }
         } catch (err) {
           // ignore - keep server rendered values
-          console.warn('loadPortfolio error', err);
+          console.warn("loadPortfolio error", err);
         }
       }
 
@@ -727,9 +758,10 @@
       // Show price when selection changes
       const symbolSelect = document.getElementById("symbol-select");
       const selectedPriceEl = document.getElementById("selected-price");
-      const amountInput = document.getElementById('amount-usd');
-      const btnMax = document.getElementById('btn-max');
-      const btnHalf = document.getElementById('btn-half');
+      const amountInput = document.getElementById("amount-usd");
+      const btnMax = document.getElementById("btn-max");
+      const btnHalf = document.getElementById("btn-half");
+
       if (symbolSelect) {
         symbolSelect.addEventListener("change", (e) => {
           const sym = e.target.value;
@@ -745,21 +777,22 @@
       // Quick-fill helpers
       function parseCurrencyText(s) {
         if (!s) return 0;
-        return Number(String(s).replace(/[^0-9.\-]/g, '')) || 0;
+        return Number(String(s).replace(/[^0-9.\-]/g, "")) || 0;
       }
 
       function getDisplayedBalance() {
-        const b = document.querySelector('.balance-amount')?.textContent || '';
+        const b = document.querySelector(".balance-amount")?.textContent || "";
         return parseCurrencyText(b);
       }
 
-      btnMax?.addEventListener('click', () => {
+      btnMax?.addEventListener("click", () => {
         const bal = getDisplayedBalance();
-        amountInput.value = bal ? String(bal.toFixed(2)) : '';
+        amountInput.value = bal ? String(bal.toFixed(2)) : "";
       });
-      btnHalf?.addEventListener('click', () => {
+
+      btnHalf?.addEventListener("click", () => {
         const bal = getDisplayedBalance();
-        amountInput.value = bal ? String((bal/2).toFixed(2)) : '';
+        amountInput.value = bal ? String((bal / 2).toFixed(2)) : "";
       });
 
       async function getPriceForSymbol(sym) {
@@ -767,7 +800,7 @@
         if (obj && obj.price_usd) return Number(obj.price_usd);
         try {
           const r = await fetch(`/api/price/${encodeURIComponent(sym)}`);
-          if (!r.ok) throw new Error('no price');
+          if (!r.ok) throw new Error("no price");
           const j = await r.json();
           return Number(j.price_usd || j.price || 0);
         } catch (e) {
@@ -793,21 +826,54 @@
 
         const symbol = form.symbol.value;
         const usdAmount = Number(form.amount_usd.value);
-        if (!symbol) throw new Error('Select a coin');
-        if (!Number.isFinite(usdAmount) || usdAmount <= 0) throw new Error('Enter an amount in USD');
 
-        // determine price and compute quantity to send to server
-        const price = await getPriceForSymbol(symbol);
-        if (!price) throw new Error('Price unavailable; try later');
-        const qty = +(usdAmount / price).toFixed(8);
+        // Client-side validation with UI feedback (no uncaught throws)
+        if (!symbol) {
+          resultDiv.className = "result-error";
+          resultDiv.innerHTML = `
+            <div class="result-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              <h3>Trade Failed</h3>
+            </div>
+            <p class="error-message">Select a coin before trading.</p>
+          `;
+          return;
+        }
 
-        const body = {
-          symbol,
-          side: selectedSide,
-          quantity: qty,
-        };
+        if (!Number.isFinite(usdAmount) || usdAmount <= 0) {
+          resultDiv.className = "result-error";
+          resultDiv.innerHTML = `
+            <div class="result-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              <h3>Trade Failed</h3>
+            </div>
+            <p class="error-message">Enter a valid USD amount greater than 0.</p>
+          `;
+          return;
+        }
 
         try {
+          // determine price and compute quantity to send to server
+          const price = await getPriceForSymbol(symbol);
+          if (!price) {
+            throw new Error("Price unavailable; try later");
+          }
+          const qty = +(usdAmount / price).toFixed(8);
+
+          const body = {
+            symbol,
+            side: selectedSide,
+            quantity: qty,
+          };
+
           const r = await fetch("/api/trade", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
