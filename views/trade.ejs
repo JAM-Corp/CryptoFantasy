@@ -1,33 +1,879 @@
-<!doctype html><meta charset="utf-8" />
-<title>Trade</title>
-<h1>Trade</h1>
-<form id="f">
-  <label>Symbol (e.g., BITCOIN): <input name="symbol" required></label><br>
-  <label>Side:
-    <select name="side">
-      <option>BUY</option>
-      <option>SELL</option>
-    </select>
-  </label><br>
-  <label>Quantity: <input name="quantity" type="number" step="0.00000001" min="0.00000001" required></label><br>
-  <button>Submit</button>
-</form>
-<pre id="out"></pre>
-<script>
-document.getElementById("f").addEventListener("submit", async (e)=>{
-  e.preventDefault();
-  const form = e.target;
-  const body = {
-    symbol: form.symbol.value,
-    side: form.side.value,
-    quantity: form.quantity.value
-  };
-  const r = await fetch("/api/trade", {
-    method: "POST",
-    headers: { "Content-Type":"application/json" },
-    body: JSON.stringify(body)
-  });
-  const j = await r.json();
-  out.textContent = JSON.stringify(j, null, 2);
-});
-</script>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Trade - CryptoFantasy</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #0f1724;
+        color: #e6eef8;
+        overflow-x: hidden;
+      }
+
+      /* Top Navigation Bar */
+      .topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: rgba(15, 23, 36, 0.95);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+        z-index: 100;
+      }
+
+      .topbar h1 {
+        font-size: 24px;
+        color: #7c3aed;
+        cursor: pointer;
+      }
+
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+
+      .user-info span {
+        font-size: 14px;
+        color: #e6eef8;
+      }
+
+      /* Sidebar */
+      .sidebar {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        width: 250px;
+        height: calc(100vh - 60px);
+        background: rgba(255, 255, 255, 0.05);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px 0;
+      }
+
+      .sidebar-btn {
+        width: 100%;
+        background: transparent;
+        color: #e6eef8;
+        padding: 15px 20px;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        border-left: 3px solid transparent;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .sidebar-btn:hover {
+        background: rgba(124, 58, 237, 0.2);
+        border-left-color: #7c3aed;
+      }
+
+      .sidebar-btn.active {
+        background: rgba(124, 58, 237, 0.3);
+        border-left-color: #7c3aed;
+        color: #7c3aed;
+      }
+
+      .sidebar-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: #9ca3af;
+        transition: fill 0.3s ease;
+      }
+
+      .sidebar-btn:hover svg,
+      .sidebar-btn.active svg {
+        fill: #7c3aed;
+      }
+
+      .sidebar-footer {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        padding: 20px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .logout-btn {
+        width: 100%;
+        background: transparent;
+        color: #ef4444;
+        padding: 15px 20px;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .logout-btn:hover {
+        background: rgba(239, 68, 68, 0.1);
+      }
+
+      .logout-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: #ef4444;
+      }
+
+      /* Main Content */
+      .main-content {
+        margin-left: 250px;
+        margin-top: 60px;
+        padding: 40px;
+        min-height: calc(100vh - 60px);
+      }
+
+      .page-header {
+        margin-bottom: 30px;
+      }
+
+      .page-header h2 {
+        font-size: 32px;
+        color: #e6eef8;
+        margin-bottom: 10px;
+      }
+
+      /* Balance Card */
+      .balance-card {
+        background: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 500px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      .balance-label {
+        font-size: 14px;
+        color: rgba(255, 255, 255, 0.8);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .balance-amount {
+        font-size: 36px;
+        font-weight: 700;
+        color: #fff;
+      }
+
+      /* Trade Container */
+      .trade-container {
+        max-width: 500px;
+      }
+
+      .trade-layout {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
+      }
+
+      .trade-left {
+        flex: 1 1 0;
+        min-width: 320px;
+      }
+
+      /* Make holdings panel larger so it fills more of the page */
+      .trade-right {
+        width: 440px;
+        flex: 0 0 440px;
+      }
+
+      .selected-price.small {
+        margin-top: 8px;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .holdings-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        border-radius: 12px;
+        padding: 18px;
+        min-height: 180px;
+      }
+
+      .holdings-header h4 {
+        margin: 0 0 8px 0;
+        font-size: 18px;
+      }
+
+      .holding-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        font-size: 14px;
+      }
+
+      .h-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .h-right {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      .h-symbol {
+        font-weight: 700;
+        letter-spacing: 0.4px;
+      }
+      .h-qty {
+        color: rgba(255, 255, 255, 0.9);
+        font-weight: 600;
+      }
+      .h-value {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 13px;
+        margin-top: 2px;
+      }
+
+      .holding-empty {
+        color: rgba(255, 255, 255, 0.6);
+        padding: 8px 0;
+        font-size: 14px;
+      }
+
+      form {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 28px;
+        margin-bottom: 24px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 20px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #e6eef8;
+      }
+
+      input,
+      select {
+        width: 100%;
+        padding: 12px 14px;
+        background: rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        color: #e6eef8;
+        font-size: 15px;
+        margin-top: 8px;
+        transition: all 0.2s;
+      }
+
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: #7c3aed;
+        background: rgba(0, 0, 0, 0.4);
+        box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.1);
+      }
+
+      select option {
+        background: #1a1f2e;
+        color: #e6eef8;
+      }
+
+      /* Button Group */
+      .button-group {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .btn-buy,
+      .btn-sell {
+        padding: 14px 20px;
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .btn-buy {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      }
+
+      .btn-buy:hover {
+        background: linear-gradient(135deg, #059669 0%, #047857 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+      }
+
+      .btn-sell {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      }
+
+      .btn-sell:hover {
+        background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+      }
+
+      /* Result Messages */
+      #result {
+        border-radius: 12px;
+        padding: 0;
+        overflow: hidden;
+        animation: slideIn 0.3s ease;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .result-success {
+        background: rgba(16, 185, 129, 0.1);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+
+      .result-error {
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+      }
+
+      .result-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 20px 24px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .result-success .result-header {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+      }
+
+      .result-error .result-header {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+      }
+
+      .result-header svg {
+        flex-shrink: 0;
+      }
+
+      .result-header h3 {
+        font-size: 18px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .result-details {
+        padding: 20px 24px;
+      }
+
+      .result-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px 0;
+        font-size: 15px;
+        color: #e6eef8;
+      }
+
+      .result-row:not(:last-child) {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .result-row.total {
+        margin-top: 8px;
+        padding-top: 16px;
+        border-top: 2px solid rgba(255, 255, 255, 0.1);
+        font-weight: 600;
+        font-size: 16px;
+      }
+
+      .result-row .highlight {
+        color: #10b981;
+        font-weight: 600;
+      }
+
+      .error-message {
+        color: #fca5a5;
+        font-size: 15px;
+        margin: 0;
+        padding: 20px 24px;
+      }
+
+      /* Raw Data Display */
+      pre {
+        background: #000;
+        color: #10b981;
+        padding: 20px;
+        border-radius: 8px;
+        overflow-x: auto;
+        font-size: 14px;
+        font-family: "Courier New", monospace;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Top Navigation Bar -->
+    <%- include('partials/_topbar') %>
+    <!-- Sidebar -->
+    <%- include('partials/_sidebar') %>
+
+    <style>
+      /* Compact overrides to keep trade page fitting in one viewport */
+      .main-content {
+        padding: 18px !important;
+      }
+      .balance-card {
+        max-width: 380px !important;
+        padding: 12px 14px !important;
+        border-radius: 10px;
+      }
+      .balance-amount {
+        font-size: 28px !important;
+      }
+      .trade-layout {
+        gap: 16px !important;
+      }
+      .trade-right {
+        width: 240px !important;
+        flex: 0 0 240px !important;
+      }
+      .trade-left {
+        min-width: 240px !important;
+      }
+      form {
+        padding: 14px !important;
+      }
+      .result-details {
+        padding: 12px 16px !important;
+      }
+      .button-group {
+        gap: 8px !important;
+      }
+      .holdings-card {
+        padding: 10px !important;
+      }
+      .holding-row {
+        padding: 4px 0 !important;
+        font-size: 13px !important;
+      }
+      /* Make the holdings panel sticky so it stays visible without extra scrolling */
+      .trade-right {
+        position: sticky;
+        top: 84px;
+      }
+
+      /* Reduce page header spacing */
+      .page-header {
+        margin-bottom: 12px !important;
+      }
+    </style>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <div class="page-header">
+        <h2>Trade Cryptocurrency</h2>
+      </div>
+
+      <!-- Balance Card -->
+      <div class="balance-card">
+        <div class="balance-label">Available Balance</div>
+        <div class="balance-amount">$<%= balance %></div>
+      </div>
+
+      <!-- Trade Form + Holdings Layout -->
+      <div class="trade-layout">
+        <div class="trade-left">
+          <div class="trade-container">
+            <form id="f">
+              <label>
+                Select Coin
+                <select name="symbol" id="symbol-select" required>
+                  <option value="">Choose a cryptocurrency...</option>
+                  <% coins.forEach(c => { %>
+                  <option value="<%= c.symbol %>">
+                    <%= c.symbol %><% if (c.price_usd) { %> — $<%=
+                    Number(c.price_usd).toFixed(2) %><% } %>
+                  </option>
+                  <% }) %>
+                </select>
+                <div class="selected-price small" id="selected-price">
+                  Price: —
+                </div>
+              </label>
+
+              <label>
+                Amount (USD)
+                <input
+                  name="amount_usd"
+                  id="amount-usd"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="Enter USD to spend"
+                  required
+                />
+                <div style="display: flex; gap: 8px; margin-top: 8px">
+                  <button
+                    type="button"
+                    id="btn-max"
+                    class="btn-buy"
+                    style="
+                      background: transparent;
+                      color: inherit;
+                      padding: 6px 8px;
+                      border-radius: 6px;
+                      border: 1px solid rgba(255, 255, 255, 0.04);
+                      font-weight: 600;
+                    "
+                  >
+                    Max
+                  </button>
+                  <button
+                    type="button"
+                    id="btn-half"
+                    class="btn-sell"
+                    style="
+                      background: transparent;
+                      color: inherit;
+                      padding: 6px 8px;
+                      border-radius: 6px;
+                      border: 1px solid rgba(255, 255, 255, 0.04);
+                      font-weight: 600;
+                    "
+                  >
+                    Half
+                  </button>
+                </div>
+              </label>
+
+              <div class="button-group">
+                <button type="submit" class="btn-buy" data-side="BUY">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 19V5M5 12l7-7 7 7" />
+                  </svg>
+                  Buy
+                </button>
+                <button type="submit" class="btn-sell" data-side="SELL">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 5v14M5 12l7 7 7-7" />
+                  </svg>
+                  Sell
+                </button>
+              </div>
+            </form>
+
+            <!-- Result Message -->
+            <div id="result"></div>
+          </div>
+        </div>
+
+        <div class="trade-right">
+          <div class="holdings-card">
+            <div class="holdings-header">
+              <h4>Your Holdings</h4>
+              <div class="holdings-sub">Symbol — Qty</div>
+            </div>
+            <div id="holdings-list">
+              <% if (holdings && holdings.length) { %> <% holdings.forEach(h =>
+              { %>
+              <div class="holding-row">
+                <div class="h-left">
+                  <span class="h-symbol"><%= h.symbol %></span>
+                </div>
+                <div class="h-right">
+                  <span class="h-qty" title="<%= h.qty %>"
+                    ><%= Number(h.qty).toLocaleString('en-US', {
+                    maximumFractionDigits: 3 }) %></span
+                  >
+                  <% if (typeof h.market_value !== 'undefined') { %>
+                  <span class="h-value"
+                    >$<%= Number(h.market_value).toFixed(2) %></span
+                  >
+                  <% } else if (typeof h.price_usd !== 'undefined') { %>
+                  <span class="h-value"
+                    >$<%= (Number(h.price_usd) * Number(h.qty)).toFixed(2)
+                    %></span
+                  >
+                  <% } %>
+                </div>
+              </div>
+              <% }) %> <% } else { %>
+              <div class="holding-empty">No holdings yet</div>
+              <% } %>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let selectedSide = "BUY";
+
+      // Local copy of coin data passed from server
+      const coinsData = <%- JSON.stringify(coins) %>;
+      // Local copy of holdings passed from server
+      const holdingsData = <%- JSON.stringify(holdings || []) %>;
+
+      function renderHoldings(list) {
+        const el = document.getElementById("holdings-list");
+        if (!el) return;
+        if (!list || list.length === 0) {
+          el.innerHTML = '<div class="holding-empty">No holdings yet</div>';
+          return;
+        }
+        el.innerHTML = list
+          .map(h => {
+            const qtyNum = Number(h.qty);
+            const displayQty = Number.isFinite(qtyNum) ? qtyNum.toLocaleString(undefined, { maximumFractionDigits: 3 }) : h.qty;
+            const marketVal = (h.market_value !== undefined) ? Number(h.market_value) : (h.price_usd !== undefined ? Number(h.price_usd) * Number(h.qty || 0) : null);
+            const displayVal = marketVal !== null && Number.isFinite(marketVal) ? `$${marketVal.toFixed(2)}` : '';
+            return `
+              <div class="holding-row">
+                <div class="h-left"><span class="h-symbol">${h.symbol}</span></div>
+                <div class="h-right">
+                  <span class="h-qty" title="${h.qty}">${displayQty}</span>
+                  ${displayVal ? `<span class="h-value">${displayVal}</span>` : ''}
+                </div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      // render initial holdings (server-rendered fallback)
+      renderHoldings(holdingsData);
+
+      // Fetch latest portfolio (balance + holdings) from server to ensure fresh data
+      async function loadPortfolio() {
+        try {
+          const r = await fetch('/api/portfolio');
+          if (!r.ok) return; // likely not authenticated or no db
+          const j = await r.json();
+          if (j && typeof j.cash_usd !== 'undefined') {
+            document.querySelector('.balance-amount').textContent = `$${j.cash_usd}`;
+          }
+          if (j && Array.isArray(j.holdings)) {
+            renderHoldings(j.holdings.map(h => ({ symbol: h.symbol, qty: h.qty })));
+          }
+        } catch (err) {
+          // ignore - keep server rendered values
+          console.warn('loadPortfolio error', err);
+        }
+      }
+
+      // initial load to ensure values reflect DB
+      loadPortfolio();
+
+      // Show price when selection changes
+      const symbolSelect = document.getElementById("symbol-select");
+      const selectedPriceEl = document.getElementById("selected-price");
+      const amountInput = document.getElementById('amount-usd');
+      const btnMax = document.getElementById('btn-max');
+      const btnHalf = document.getElementById('btn-half');
+      if (symbolSelect) {
+        symbolSelect.addEventListener("change", (e) => {
+          const sym = e.target.value;
+          const obj = coinsData.find(c => c.symbol === sym);
+          if (obj && obj.price_usd) {
+            selectedPriceEl.textContent = `Price: $${Number(obj.price_usd).toFixed(2)}`;
+          } else {
+            selectedPriceEl.textContent = "Price: —";
+          }
+        });
+      }
+
+      // Quick-fill helpers
+      function parseCurrencyText(s) {
+        if (!s) return 0;
+        return Number(String(s).replace(/[^0-9.\-]/g, '')) || 0;
+      }
+
+      function getDisplayedBalance() {
+        const b = document.querySelector('.balance-amount')?.textContent || '';
+        return parseCurrencyText(b);
+      }
+
+      btnMax?.addEventListener('click', () => {
+        const bal = getDisplayedBalance();
+        amountInput.value = bal ? String(bal.toFixed(2)) : '';
+      });
+      btnHalf?.addEventListener('click', () => {
+        const bal = getDisplayedBalance();
+        amountInput.value = bal ? String((bal/2).toFixed(2)) : '';
+      });
+
+      async function getPriceForSymbol(sym) {
+        const obj = coinsData.find(c => c.symbol === sym);
+        if (obj && obj.price_usd) return Number(obj.price_usd);
+        try {
+          const r = await fetch(`/api/price/${encodeURIComponent(sym)}`);
+          if (!r.ok) throw new Error('no price');
+          const j = await r.json();
+          return Number(j.price_usd || j.price || 0);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      // Handle button clicks to set side
+      document.querySelectorAll(".btn-buy, .btn-sell").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          selectedSide = e.currentTarget.dataset.side;
+        });
+      });
+
+      document.getElementById("f").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const form = e.target;
+        const resultDiv = document.getElementById("result");
+
+        // Clear previous result
+        resultDiv.innerHTML = "";
+        resultDiv.className = "";
+
+        const symbol = form.symbol.value;
+        const usdAmount = Number(form.amount_usd.value);
+        if (!symbol) throw new Error('Select a coin');
+        if (!Number.isFinite(usdAmount) || usdAmount <= 0) throw new Error('Enter an amount in USD');
+
+        // determine price and compute quantity to send to server
+        const price = await getPriceForSymbol(symbol);
+        if (!price) throw new Error('Price unavailable; try later');
+        const qty = +(usdAmount / price).toFixed(8);
+
+        const body = {
+          symbol,
+          side: selectedSide,
+          quantity: qty,
+        };
+
+        try {
+          const r = await fetch("/api/trade", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+
+          const j = await r.json();
+
+          if (j.success) {
+            resultDiv.className = "result-success";
+            resultDiv.innerHTML = `
+              <div class="result-header">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+                <h3>Trade Successful!</h3>
+              </div>
+              <div class="result-details">
+                <div class="result-row">
+                  <span>Action:</span>
+                  <span class="highlight">${body.side} ${body.quantity} ${body.symbol}</span>
+                </div>
+                <div class="result-row">
+                  <span>Price:</span>
+                  <span>$${j.price_used_usd}</span>
+                </div>
+                <div class="result-row">
+                  <span>New Cash Balance:</span>
+                  <span class="highlight">$${j.cash_usd}</span>
+                </div>
+                <div class="result-row">
+                  <span>Crypto Value:</span>
+                  <span>$${j.crypto_value_usd}</span>
+                </div>
+                <div class="result-row total">
+                  <span>Total Portfolio Value:</span>
+                  <span class="highlight">$${j.total_value_usd}</span>
+                </div>
+              </div>
+            `;
+
+            // After successful trade, refresh portfolio from server to get canonical values
+            await loadPortfolio();
+
+            // Reset form
+            form.reset();
+          } else {
+            throw new Error(j.error || "Trade failed");
+          }
+        } catch (err) {
+          const errorMsg = err.message || "An error occurred";
+          resultDiv.className = "result-error";
+          resultDiv.innerHTML = `
+            <div class="result-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
+              <h3>Trade Failed</h3>
+            </div>
+            <p class="error-message">${errorMsg}</p>
+          `;
+        }
+      });
+    </script>
+  </body>
+</html>
