@@ -475,9 +475,7 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="memberCount"
-              >Number of Members</label
-            >
+            <label class="form-label" for="memberCount">Number of Members</label>
             <input
               type="number"
               id="memberCount"
@@ -501,6 +499,10 @@
               Create League
             </button>
           </div>
+          <div
+            id="createLeagueMessage"
+            style="display:none; margin-top:14px; font-size:14px;"
+          ></div>
         </form>
       </div>
     </div>
@@ -548,6 +550,11 @@
               Join League
             </button>
           </div>
+
+          <div
+            id="joinLeagueMessage"
+            style="display:none; margin-top:14px; font-size:14px;"
+          ></div>
         </form>
       </div>
     </div>
@@ -556,6 +563,16 @@
     <!-- JAVASCRIPT                                -->
     <!-- ========================================= -->
     <script>
+      // Helper to show inline status messages
+      function showMessage(id, text, isError = false) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.textContent = text;
+        el.style.display = text ? "block" : "none";
+        el.style.color = isError ? "#fca5a5" : "#6ee7b7";
+        el.style.fontSize = "14px";
+        el.style.marginTop = "10px";
+      }
 
       // ========================================
       // CREATE LEAGUE MODAL FUNCTIONS
@@ -567,15 +584,16 @@
       function closeCreateModal() {
         document.getElementById("createModal").classList.remove("active");
         document.getElementById("createLeagueForm").reset();
+        showMessage("createLeagueMessage", "");
       }
 
       async function handleCreateLeague(event) {
         event.preventDefault();
         const leagueName = document.getElementById("leagueName").value.trim();
-        const memberCount = document.getElementById("memberCount").value.trim() || null;
+        const memberCount = Number(document.getElementById("memberCount").value);
 
-        if (!leagueName) {
-          alert("Please enter a league name.");
+        if (!leagueName || !Number.isFinite(memberCount) || memberCount < 2) {
+          showMessage("createLeagueMessage", "Please enter a valid name and member count (>= 2).", true);
           return;
         }
 
@@ -585,30 +603,37 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: leagueName,
-              memberCount,
-            }),
+              memberCount: memberCount
+            })
           });
+
           const data = await res.json();
 
           if (!res.ok) {
-            alert(data.error || "Failed to create league");
+            showMessage("createLeagueMessage", data.error || "Failed to create league.", true);
             return;
           }
 
-          closeCreateModal();
+          const league = data.league || data;
+          const code = league.joinCode;
+          const inviteUrl = league.inviteUrl;
 
-          const league = data.league;
-          let msg = `League "${league.name}" created successfully!\n\n`;
-          if (league.inviteUrl) {
-            msg += `Invite URL:\n${league.inviteUrl}\n\n`;
+          let msg = `League "${league.name}" created!`;
+          if (inviteUrl) {
+            msg += ` Share this invite URL: ${inviteUrl}`;
+          } else if (code) {
+            msg += ` Share this league code: ${code}`;
           }
-          if (league.joinCode) {
-            msg += `Join Code: ${league.joinCode}`;
-          }
-          alert(msg);
+
+          showMessage("createLeagueMessage", msg, false);
+
+          setTimeout(() => {
+            closeCreateModal();
+            window.location.reload();
+          }, 1000);
         } catch (err) {
-          console.error("handleCreateLeague error:", err);
-          alert("Network error creating league. Please try again.");
+          console.error("Create league error:", err);
+          showMessage("createLeagueMessage", "Network error creating league.", true);
         }
       }
 
@@ -622,6 +647,7 @@
       function closeJoinModal() {
         document.getElementById("joinModal").classList.remove("active");
         document.getElementById("joinLeagueForm").reset();
+        showMessage("joinLeagueMessage", "");
       }
 
       async function handleJoinLeague(event) {
@@ -629,7 +655,7 @@
         const leagueCode = document.getElementById("leagueCode").value.trim();
 
         if (!leagueCode) {
-          alert("Please enter a league code.");
+          showMessage("joinLeagueMessage", "Please enter a league code.", true);
           return;
         }
 
@@ -637,21 +663,30 @@
           const res = await fetch("/api/leagues/join", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ leagueCode }),
+            body: JSON.stringify({ code: leagueCode })
           });
+
           const data = await res.json();
 
           if (!res.ok) {
-            alert(data.error || "Failed to join league");
+            showMessage("joinLeagueMessage", data.error || "Failed to join league.", true);
             return;
           }
 
-          closeJoinModal();
-          alert(`Joined league "${data.league.name}" successfully!`);
-          // Optionally: window.location.reload();
+          const league = data.league || data;
+          showMessage(
+            "joinLeagueMessage",
+            `Joined league "${league.name}". It is now your active league.`,
+            false
+          );
+
+          setTimeout(() => {
+            closeJoinModal();
+            window.location.reload();
+          }, 800);
         } catch (err) {
-          console.error("handleJoinLeague error:", err);
-          alert("Network error joining league. Please try again.");
+          console.error("Join league error:", err);
+          showMessage("joinLeagueMessage", "Network error joining league.", true);
         }
       }
 
@@ -672,5 +707,6 @@
         }
       });
     </script>
+
   </body>
 </html>

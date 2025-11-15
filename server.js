@@ -89,14 +89,6 @@ function requireAuth(req, res, next) {
 }
 
 // Helpers
-async function ensurePortfolio(userId) {
-  await pool.query(
-    `insert into portfolios (user_id) values ($1)
-     on conflict (user_id) do nothing`,
-    [userId]
-  );
-}
-
 function generateJoinCode(length = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
@@ -175,14 +167,6 @@ async function getOrCreateCurrentLeagueId(req) {
   const { leagueId } = await ensureSoloLeagueForUser(req.session.userId);
   req.session.currentLeagueId = leagueId;
   return leagueId;
-}
-
-async function getCurrentPrice(symbolU) {
-  const { rows } = await pool.query(
-    "select price_usd from prices_latest where symbol = $1",
-    [symbolU]
-  );
-  return rows[0]?.price_usd ?? null;
 }
 
 async function getCurrentPrice(symbolU) {
@@ -384,10 +368,11 @@ app.get("/api/me", requireAuth, async (req, res) => {
   }
 });
 
-// League api endpoints
 app.post("/api/leagues", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
 
     const { name, memberCount } = req.body;
     const trimmedName = (name || "").trim();
@@ -398,14 +383,18 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
     let memberLimit = null;
     if (memberCount !== undefined && memberCount !== null && memberCount !== "") {
       const n = Number(memberCount);
-      if (!Number.isInteger(n) || n < 2 || n > 1000) {
-        return res.status(400).json({ error: "Member count must be a reasonable integer" });
+      if (!Number.isInteger(n) || n < 2 || n > 32) {
+        return res
+          .status(400)
+          .json({ error: "Member count must be a reasonable integer" });
       }
       memberLimit = n;
     }
 
     let leagueId = null;
     let joinCode = null;
+
+    // Keep trying until we get a unique join code
     while (!leagueId) {
       joinCode = generateJoinCode();
       try {
@@ -416,19 +405,25 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
           [trimmedName, req.session.userId, joinCode, memberLimit]
         );
         leagueId = result.rows[0].id;
+        console.log("Created league:", result.rows[0]);
       } catch (e) {
-        if (e.code === "23505") continue;
+        // 23505 = unique_violation (likely join_code collision)
+        if (e.code === "23505") {
+          continue;
+        }
         throw e;
       }
     }
 
+    // Make sure the creator has a portfolio in this league
     await ensurePortfolio(req.session.userId, leagueId);
 
+    // Set as current league in session
     req.session.currentLeagueId = leagueId;
 
     const inviteUrl = `${req.protocol}://${req.get("host")}/league/join/${joinCode}`;
 
-    res.json({
+    return res.json({
       success: true,
       league: {
         id: leagueId,
@@ -438,9 +433,12 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
         inviteUrl,
       },
     });
+
   } catch (e) {
     console.error("Create league error:", e);
-    res.status(500).json({ error: "Failed to create league" });
+    if (!res.headersSent) {
+      return res.status(500).json({ error: "Failed to create league" });
+    }
   }
 });
 
@@ -508,6 +506,75 @@ app.get("/api/leagues/mine", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to load leagues" });
   }
 });
+
+app.get("/api/leagues/active", requireAuth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+    const { rows } = await pool.query(
+      `select l.id,
+              l.name,
+              l.join_code,
+              l.owner_user_id = $1 as is_owner
+       from leagues l
+       join portfolios p
+         on p.league_id = l.id
+       where p.user_id = $1
+       order by l.created_at asc`,
+      [req.session.userId]
+    );
+
+    // Ensure there is an active league
+    let activeLeagueId = req.session.currentLeagueId || null;
+    if (!activeLeagueId && rows.length) {
+      activeLeagueId = rows[0].id;
+      req.session.currentLeagueId = activeLeagueId;
+    }
+
+    const activeLeague =
+      rows.find(l => String(l.id) === String(activeLeagueId)) || null;
+
+    res.json({
+      leagues: rows,
+      activeLeagueId,
+      activeLeague,
+    });
+  } catch (e) {
+    console.error("Get active leagues error:", e);
+    res.status(500).json({ error: "Failed to load active leagues" });
+  }
+});
+
+app.post("/api/leagues/active", requireAuth, async (req, res) => {
+  try {
+    if (!pool) return res.status(500).json({ error: "Database not configured" });
+
+    const { leagueId } = req.body;
+    if (!leagueId) {
+      return res.status(400).json({ error: "leagueId required" });
+    }
+
+    // Make sure this user actually belongs to that league
+    const { rows } = await pool.query(
+      `select 1
+       from portfolios
+       where user_id = $1
+         and league_id = $2`,
+      [req.session.userId, leagueId]
+    );
+
+    if (!rows.length) {
+      return res.status(403).json({ error: "You are not in that league" });
+    }
+
+    req.session.currentLeagueId = Number(leagueId);
+    res.json({ success: true });
+  } catch (e) {
+    console.error("Set active league error:", e);
+    res.status(500).json({ error: "Failed to set active league" });
+  }
+});
+
 
 // Get current coin data
 app.get("/api/cg/coins", async (req, res) => {
