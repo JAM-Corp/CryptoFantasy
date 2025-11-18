@@ -202,7 +202,6 @@ app.get("/league", requireAuth, (req, res) => res.render("league", { activePage:
 app.get("/coins", requireAuth, (req, res) => res.render("coins", { activePage: "coins" }));
 app.get("/coin-detail", requireAuth, (req, res) => res.render("coin-detail", { activePage: "coin-detail" }));
 app.get("/portfolio", requireAuth, (req, res) => res.render("portfolio", { activePage: "portfolio" }));
-app.get("/matchups", requireAuth, (req, res) => res.render("matchups", { activePage: "matchups" }));
 
 
 // use trade routes module to keep logic out of server.js
