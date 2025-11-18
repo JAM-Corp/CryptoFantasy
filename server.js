@@ -197,11 +197,12 @@ app.get("/login", (_req, res) => res.render("login"));
 app.get("/register", (_req, res) => res.render("register"));
 
 // Protected routes - require authentication
-app.get("/index", requireAuth, (req, res) => res.render("index"));
-app.get("/league", requireAuth, (req, res) => res.render("league"));
-app.get("/coins", requireAuth, (req, res) => res.render("coins"));
-app.get("/coin-detail", requireAuth, (req, res) => res.render("coin-detail"));
-app.get("/portfolio", requireAuth, (req, res) => res.render("portfolio"));
+app.get("/index", requireAuth, (req, res) => res.render("index", { activePage: "index" }));
+app.get("/league", requireAuth, (req, res) => res.render("league", { activePage: "league" }));
+app.get("/coins", requireAuth, (req, res) => res.render("coins", { activePage: "coins" }));
+app.get("/coin-detail", requireAuth, (req, res) => res.render("coin-detail", { activePage: "coin-detail" }));
+app.get("/portfolio", requireAuth, (req, res) => res.render("portfolio", { activePage: "portfolio" }));
+
 
 // use trade routes module to keep logic out of server.js
 const tradeRoutes = makeTradeRoutes({ pool, COIN_WHITELIST, getOrCreateCurrentLeagueId });
