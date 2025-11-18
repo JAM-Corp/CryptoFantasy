@@ -51,10 +51,16 @@ export default function makeTradeRoutes({ pool, COIN_WHITELIST, getOrCreateCurre
           holdings = hrows;
         }
 
-        res.render("trade", { coins, balance, holdings });
+        res.render("trade", {
+          activePage: "trade",
+          coins,
+          balance,
+          holdings });
+
       } catch (e) {
         console.error("tradeGet error:", e);
         res.render("trade", {
+          activePage: "trade",
           coins: COIN_WHITELIST.map((s) => ({ symbol: s, price_usd: null })),
           balance: "0.00",
           holdings: [],
