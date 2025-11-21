@@ -1,21 +1,58 @@
 import { Pool } from "pg";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-// Env
-const DATABASE_URL = process.env.DATABASE_URL;
-const CG_API_KEY   = process.env.CG_API_KEY || "";
-const CG_VS        = (process.env.CG_VS || "usd").trim();
-const IDS          = (process.env.CG_IDS || "bitcoin,ethereum,solana")
-                      .split(",").map(s => s.trim()).filter(Boolean);
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-if (!DATABASE_URL) {
-  console.error("DATABASE_URL is required for the worker");
+// Load env.json if DATABASE_URL not set
+let dbConfig = null;
+let CG_API_KEY = process.env.CG_API_KEY || "";
+
+if (process.env.DATABASE_URL) {
+  dbConfig = {
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+  };
+} else {
+  try {
+    const envPath = path.join(__dirname, "..", "env.json");
+    if (fs.existsSync(envPath)) {
+      const envData = JSON.parse(fs.readFileSync(envPath, "utf-8"));
+      if (!CG_API_KEY && envData.CG_API_KEY) CG_API_KEY = envData.CG_API_KEY;
+      dbConfig = {
+        user: envData.user,
+        host: envData.host,
+        database: envData.database,
+        password: envData.password,
+        port: envData.port,
+      };
+      console.log(
+        `Using database config from env.json (database: ${envData.database})`
+      );
+    }
+  } catch (e) {
+    console.error("Error loading env.json:", e.message);
+  }
+}
+
+if (!dbConfig) {
+  console.error("DATABASE_URL or env.json is required for the worker");
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: DATABASE_URL });
+const CG_VS = (process.env.CG_VS || "usd").trim();
+const IDS = (process.env.CG_IDS || "bitcoin,ethereum,solana")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const pool = new Pool(dbConfig);
 
 async function fetchBatch(ids) {
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=${encodeURIComponent(CG_VS)}`;
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(
+    ids.join(",")
+  )}&vs_currencies=${encodeURIComponent(CG_VS)}`;
   const headers = {};
   if (CG_API_KEY) headers["x-cg-demo-api-key"] = CG_API_KEY;
   const r = await fetch(url, { headers });
@@ -58,9 +95,9 @@ async function tick() {
 // Main loop: run now, then every minute
 let timer;
 function start() {
-  tick().catch(err => console.error("tick error:", err.message || err));
+  tick().catch((err) => console.error("tick error:", err.message || err));
   timer = setInterval(() => {
-    tick().catch(err => console.error("tick error:", err.message || err));
+    tick().catch((err) => console.error("tick error:", err.message || err));
   }, 60_000);
 }
 
@@ -68,7 +105,9 @@ function start() {
 for (const sig of ["SIGINT", "SIGTERM"]) {
   process.on(sig, async () => {
     if (timer) clearInterval(timer);
-    try { await pool.end(); } catch {}
+    try {
+      await pool.end();
+    } catch {}
     process.exit(0);
   });
 }

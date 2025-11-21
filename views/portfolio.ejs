@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Portfolio - CryptoFantasy</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
     <style>
       * {
         margin: 0;
@@ -139,53 +141,300 @@
       .main-content {
         margin-left: 250px;
         margin-top: 60px;
-        padding: 40px;
-        min-height: calc(100vh - 60px);
+        padding: 20px 24px;
+        height: calc(100vh - 60px);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
       }
 
       .page-header {
-        margin-bottom: 30px;
+        margin-bottom: 16px;
+        flex-shrink: 0;
       }
 
       .page-header h2 {
-        font-size: 32px;
+        font-size: 28px;
         color: #e6eef8;
-        margin-bottom: 10px;
+        margin-bottom: 6px;
       }
 
-      /* Raw Data Display */
-      pre {
-        background: #000;
-        color: #10b981;
-        padding: 20px;
-        border-radius: 8px;
-        overflow-x: auto;
-        font-size: 14px;
-        font-family: "Courier New", monospace;
+      .league-label {
+        margin-top: 4px;
+        font-size: 12px;
+        color: #9ca3af;
+      }
+
+      /* Summary Cards */
+      .summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+        flex-shrink: 0;
+      }
+
+      .summary-card {
+        background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 14px 16px;
+        transition: all 0.3s ease;
+      }
+
+      .summary-card:hover {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: rgba(124, 58, 237, 0.3);
+      }
+
+      .summary-card-label {
+        font-size: 10px;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
+        font-weight: 600;
+      }
+
+      .summary-card-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #e2e8f0;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .summary-card-change {
+        font-size: 12px;
+        margin-top: 4px;
+        font-weight: 500;
+      }
+
+      .positive {
+        color: #10b981;
+      }
+
+      .negative {
+        color: #ef4444;
+      }
+
+      /* Chart Section */
+      .chart-section {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+        flex-shrink: 0;
+      }
+
+      .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chart-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #e2e8f0;
+      }
+
+      .chart-controls {
+        display: flex;
+        gap: 6px;
+      }
+
+      .chart-btn {
+        padding: 4px 10px;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 5px;
+        color: #94a3b8;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .chart-btn:hover {
+        background: rgba(124, 58, 237, 0.2);
+        border-color: rgba(124, 58, 237, 0.3);
+        color: #e2e8f0;
+      }
+
+      .chart-btn.active {
+        background: rgba(124, 58, 237, 0.3);
+        border-color: #7c3aed;
+        color: #7c3aed;
+      }
+
+      .chart-container {
+        position: relative;
+        height: 160px;
+        width: 100%;
+      }
+
+      #portfolioChart {
+        width: 100% !important;
+        height: 160px !important;
+      }
+
+      /* Holdings Table */
+      .holdings-section {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+        padding: 16px;
+        flex: 1;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .holdings-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #e2e8f0;
+        margin-bottom: 12px;
+        flex-shrink: 0;
+      }
+
+      #holdings-container {
+        flex: 1;
+        overflow-y: auto;
+      }
+
+      .holdings-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .holdings-table thead th {
+        text-align: left;
+        padding: 10px;
+        font-size: 10px;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 600;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        position: sticky;
+        top: 0;
+        background: rgba(15, 23, 36, 0.95);
+      }
+
+      .holdings-table tbody td {
+        padding: 12px 10px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 13px;
+        color: #e2e8f0;
+      }
+
+      .holdings-table tbody tr {
+        transition: background 0.2s ease;
+      }
+
+      .holdings-table tbody tr:hover {
+        background: rgba(255, 255, 255, 0.03);
+      }
+
+      .symbol-cell {
+        font-weight: 600;
+        text-transform: uppercase;
+        color: #7c3aed;
+      }
+
+      .number-cell {
+        font-variant-numeric: tabular-nums;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #94a3b8;
+        font-size: 14px;
+      }
+
+      .loading-state {
+        text-align: center;
+        padding: 40px;
+        color: #94a3b8;
+        font-size: 14px;
       }
     </style>
   </head>
   <body>
     <!-- Top Navigation Bar -->
-     <%- include('partials/_topbar') %>
-     <!-- Sidebar -->
-     <%- include('partials/_sidebar') %>
+    <%- include('partials/_topbar') %>
+    <!-- Sidebar -->
+    <%- include('partials/_sidebar') %>
     <!-- Main Content -->
     <div class="main-content">
       <div class="page-header">
         <h2>Portfolio</h2>
-        <div id="active-league-label"
-             style="margin-top: 6px; font-size: 13px; color: #9ca3af;">
+        <div class="league-label">
           League: <span id="active-league-name">Loading...</span>
         </div>
       </div>
-      <pre id="out">Loading...</pre>
+
+      <!-- Summary Cards -->
+      <div class="summary-grid">
+        <div class="summary-card">
+          <div class="summary-card-label">Total Value</div>
+          <div class="summary-card-value" id="total-value">$0.00</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-card-label">Cash Balance</div>
+          <div class="summary-card-value" id="cash-balance">$0.00</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-card-label">Crypto Value</div>
+          <div class="summary-card-value" id="crypto-value">$0.00</div>
+        </div>
+        <div class="summary-card">
+          <div class="summary-card-label">Total P/L</div>
+          <div class="summary-card-value" id="total-pl">$0.00</div>
+          <div class="summary-card-change" id="total-pl-percent">0.00%</div>
+        </div>
+      </div>
+
+      <!-- Portfolio Chart -->
+      <div class="chart-section">
+        <div class="chart-header">
+          <div class="chart-title">Portfolio Value Over Time</div>
+          <div class="chart-controls">
+            <button class="chart-btn" data-range="1D">1D</button>
+            <button class="chart-btn" data-range="1W">1W</button>
+            <button class="chart-btn" data-range="1M">1M</button>
+            <button class="chart-btn" data-range="3M">3M</button>
+            <button class="chart-btn active" data-range="ALL">ALL</button>
+          </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="portfolioChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Holdings Table -->
+      <div class="holdings-section">
+        <div class="holdings-title">Holdings</div>
+        <div id="holdings-container">
+          <div class="loading-state">Loading holdings...</div>
+        </div>
+      </div>
     </div>
 
     <script>
-      (async () => {
+      let portfolioData = null;
+      let tradesData = null;
+      let chart = null;
+
+      async function loadPortfolioData() {
         try {
+          // Load active league
           try {
             const rLeague = await fetch("/api/leagues/active");
             if (rLeague.ok) {
@@ -201,17 +450,278 @@
             console.warn("Failed to load active league", e);
           }
 
+          // Load portfolio
           const r = await fetch("/api/portfolio");
-          const j = await r.json();
-          const out = document.getElementById("out");
-          out.textContent = JSON.stringify(j, null, 2);
+          portfolioData = await r.json();
+
+          // Update summary cards
+          updateSummaryCards();
+
+          // Load and display holdings
+          displayHoldings();
+
+          // Load trades for chart
+          await loadTradesAndChart();
         } catch (err) {
           console.error("Error loading portfolio:", err);
-          const out = document.getElementById("out");
-          out.textContent = "Error loading portfolio.";
         }
-      })();
-    </script>
+      }
 
+      function updateSummaryCards() {
+        const totalValue = parseFloat(portfolioData.total_value_usd);
+        const cashBalance = parseFloat(portfolioData.cash_usd);
+        const cryptoValue = parseFloat(portfolioData.crypto_value_usd);
+
+        document.getElementById(
+          "total-value"
+        ).textContent = `$${totalValue.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+        document.getElementById(
+          "cash-balance"
+        ).textContent = `$${cashBalance.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+        document.getElementById(
+          "crypto-value"
+        ).textContent = `$${cryptoValue.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+
+        // Calculate P/L (starting balance is typically 100000)
+        const startingBalance = 100000;
+        const totalPL = totalValue - startingBalance;
+        const plPercent = (totalPL / startingBalance) * 100;
+
+        const plEl = document.getElementById("total-pl");
+        const plPercentEl = document.getElementById("total-pl-percent");
+
+        plEl.textContent = `${totalPL >= 0 ? "+" : ""}$${totalPL.toLocaleString(
+          undefined,
+          { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+        )}`;
+        plPercentEl.textContent = `${
+          plPercent >= 0 ? "+" : ""
+        }${plPercent.toFixed(2)}%`;
+
+        if (totalPL >= 0) {
+          plEl.classList.add("positive");
+          plPercentEl.classList.add("positive");
+        } else {
+          plEl.classList.add("negative");
+          plPercentEl.classList.add("negative");
+        }
+      }
+
+      function displayHoldings() {
+        const container = document.getElementById("holdings-container");
+
+        if (!portfolioData.holdings || portfolioData.holdings.length === 0) {
+          container.innerHTML =
+            '<div class="empty-state">No holdings yet. Start trading to build your portfolio!</div>';
+          return;
+        }
+
+        const table = document.createElement("table");
+        table.className = "holdings-table";
+
+        table.innerHTML = `
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Quantity</th>
+              <th>Current Price</th>
+              <th>Market Value</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${portfolioData.holdings
+              .map((holding) => {
+                const qty = parseFloat(holding.qty);
+                const price = parseFloat(holding.price_usd);
+                const marketValue = parseFloat(holding.market_value);
+
+                return `
+                <tr>
+                  <td class="symbol-cell">${holding.symbol}</td>
+                  <td class="number-cell">${qty.toLocaleString(undefined, {
+                    minimumFractionDigits: 4,
+                    maximumFractionDigits: 8,
+                  })}</td>
+                  <td class="number-cell">$${price.toLocaleString(undefined, {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}</td>
+                  <td class="number-cell">$${marketValue.toLocaleString(
+                    undefined,
+                    { minimumFractionDigits: 2, maximumFractionDigits: 2 }
+                  )}</td>
+                </tr>
+              `;
+              })
+              .join("")}
+          </tbody>
+        `;
+
+        container.innerHTML = "";
+        container.appendChild(table);
+      }
+
+      async function loadTradesAndChart() {
+        try {
+          // Fetch real portfolio history from backend
+          const historyRes = await fetch("/api/portfolio/history");
+          const historyData = await historyRes.json();
+
+          if (historyData.history && historyData.history.length > 0) {
+            const chartData = historyData.history.map((point) => ({
+              x: point.timestamp,
+              y: point.value,
+            }));
+
+            drawChart(chartData);
+            setupChartControls(chartData);
+          }
+        } catch (err) {
+          console.error("Error loading chart data:", err);
+          // Fallback to showing current value
+          const totalValue = parseFloat(portfolioData.total_value_usd);
+          const fallbackData = [
+            { x: Date.now() - 24 * 60 * 60 * 1000, y: totalValue },
+            { x: Date.now(), y: totalValue },
+          ];
+          drawChart(fallbackData);
+          setupChartControls(fallbackData);
+        }
+      }
+
+      function generateChartData() {
+        // This function is no longer needed - using real data from backend
+        const now = Date.now();
+        const totalValue = parseFloat(portfolioData.total_value_usd);
+        return [
+          { x: now - 24 * 60 * 60 * 1000, y: totalValue },
+          { x: now, y: totalValue },
+        ];
+      }
+
+      function drawChart(dataPoints) {
+        const ctx = document.getElementById("portfolioChart").getContext("2d");
+        if (chart) chart.destroy();
+
+        const values = dataPoints.map((p) => p.y);
+        const minValue = Math.min(...values);
+        const maxValue = Math.max(...values);
+        const range = maxValue - minValue;
+
+        // Force a minimum range of at least 1% of the value for better visualization
+        const minRange = maxValue * 0.02;
+        const actualRange = Math.max(range, minRange);
+
+        const yMin = minValue - actualRange;
+        const yMax = maxValue + actualRange;
+
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            datasets: [
+              {
+                label: "Portfolio Value",
+                data: dataPoints,
+                parsing: false,
+                borderColor: "#7c3aed",
+                borderWidth: 2,
+                pointRadius: 0,
+                tension: 0.1,
+              },
+            ],
+          },
+          options: {
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                intersect: false,
+                mode: "index",
+                callbacks: {
+                  label: (ctx) => {
+                    const v = ctx.parsed.y;
+                    return `$${v.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`;
+                  },
+                },
+              },
+            },
+            scales: {
+              x: {
+                type: "time",
+                display: false,
+                time: { unit: "day" },
+                grid: { color: "rgba(255,255,255,0.08)" },
+              },
+              y: {
+                min: yMin,
+                max: yMax,
+                grid: { color: "rgba(255,255,255,0.08)" },
+                ticks: {
+                  color: "#a9b4c6",
+                  maxTicksLimit: 5,
+                  callback: (v) =>
+                    `$${Number(v).toLocaleString(undefined, {
+                      maximumFractionDigits: 0,
+                    })}`,
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function setupChartControls(fullData) {
+        const buttons = document.querySelectorAll(".chart-btn");
+        buttons.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            buttons.forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+
+            const range = btn.dataset.range;
+            const filteredData = filterDataByRange(fullData, range);
+            chart.data.datasets[0].data = filteredData;
+            chart.update();
+          });
+        });
+      }
+
+      function filterDataByRange(data, range) {
+        const now = Date.now();
+        let cutoff;
+
+        switch (range) {
+          case "1D":
+            cutoff = now - 24 * 60 * 60 * 1000;
+            break;
+          case "1W":
+            cutoff = now - 7 * 24 * 60 * 60 * 1000;
+            break;
+          case "1M":
+            cutoff = now - 30 * 24 * 60 * 60 * 1000;
+            break;
+          case "3M":
+            cutoff = now - 90 * 24 * 60 * 60 * 1000;
+            break;
+          default:
+            return data;
+        }
+
+        return data.filter((d) => d.x >= cutoff);
+      }
+
+      loadPortfolioData();
+    </script>
   </body>
 </html>
