@@ -1,81 +1,164 @@
-<div class="topbar">
-    <h1 onclick="window.location.href='/index'">CryptoFantasy</h1>
-    <div class="user-info">
-        <span id="username">Loading...</span>
+<style>
+  .league-dropdown-wrapper {
+    position: relative;
+    display: none;
+    align-items: center;
+    gap: 12px;
+  }
 
-        <div id="league-container" style="display: none; align-items: center; gap: 8px;">
-            <span style="font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.06em;">
-                League
-            </span>
-            <select id="league-select"
-                    style="
-                        padding: 6px 10px;
-                        border-radius: 999px;
-                        border: 1px solid rgba(255,255,255,0.2);
-                        background: rgba(15,23,36,0.9);
-                        color: #e6eef8;
-                        font-size: 13px;
-                        cursor: pointer;
-                        min-width: 160px;
-                    ">
-            </select>
-        </div>
+  .league-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+
+  .league-select-container {
+    position: relative;
+  }
+
+  #league-select {
+    appearance: none;
+    padding: 10px 40px 10px 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(124, 58, 237, 0.3);
+    background: linear-gradient(
+      135deg,
+      rgba(30, 41, 59, 0.8) 0%,
+      rgba(15, 23, 36, 0.9) 100%
+    );
+    color: #e2e8f0;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    min-width: 180px;
+    transition: all 0.2s ease;
+    outline: none;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  #league-select:hover {
+    border-color: rgba(124, 58, 237, 0.5);
+    background: linear-gradient(
+      135deg,
+      rgba(30, 41, 59, 0.9) 0%,
+      rgba(15, 23, 36, 0.95) 100%
+    );
+    box-shadow: 0 4px 8px rgba(124, 58, 237, 0.15);
+  }
+
+  #league-select:focus {
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2),
+      0 4px 8px rgba(124, 58, 237, 0.15);
+  }
+
+  .league-select-arrow {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: #94a3b8;
+    transition: color 0.2s ease;
+  }
+
+  #league-select:hover ~ .league-select-arrow,
+  #league-select:focus ~ .league-select-arrow {
+    color: #7c3aed;
+  }
+
+  #league-select option {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 10px;
+  }
+</style>
+
+<div class="topbar">
+  <h1 onclick="window.location.href='/index'">CryptoFantasy</h1>
+  <div class="user-info">
+    <span id="username">Loading...</span>
+
+    <div id="league-container" class="league-dropdown-wrapper">
+      <span class="league-label">League</span>
+      <div class="league-select-container">
+        <select id="league-select"></select>
+        <svg
+          class="league-select-arrow"
+          width="12"
+          height="8"
+          viewBox="0 0 12 8"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M1 1.5L6 6.5L11 1.5"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </div>
     </div>
+  </div>
 </div>
 
 <script>
-    (async () => {
-        try {
-            const meRes = await fetch("/api/me");
-            if (meRes.ok) {
-                const data = await meRes.json();
-                document.getElementById("username").textContent = data.user.username;
-            }
+  (async () => {
+    try {
+      const meRes = await fetch("/api/me");
+      if (meRes.ok) {
+        const data = await meRes.json();
+        document.getElementById("username").textContent = data.user.username;
+      }
 
-            const leaguesRes = await fetch("/api/leagues/active");
-            if (!leaguesRes.ok) return;
+      const leaguesRes = await fetch("/api/leagues/active");
+      if (!leaguesRes.ok) return;
 
-            const leaguesData = await leaguesRes.json();
-            const { leagues = [], activeLeagueId, activeLeague } = leaguesData;
+      const leaguesData = await leaguesRes.json();
+      const { leagues = [], activeLeagueId, activeLeague } = leaguesData;
 
-            const container = document.getElementById("league-container");
-            const select = document.getElementById("league-select");
+      const container = document.getElementById("league-container");
+      const select = document.getElementById("league-select");
 
-            if (!leagues.length) {
-                return;
-            }
+      if (!leagues.length) {
+        return;
+      }
 
-            container.style.display = "flex";
+      container.style.display = "flex";
 
-            leagues.forEach(l => {
-                const opt = document.createElement("option");
-                opt.value = l.id;
-                opt.textContent = l.name;
-                if (activeLeagueId && Number(activeLeagueId) === Number(l.id)) {
-                    opt.selected = true;
-                }
-                select.appendChild(opt);
-            });
-
-            if (!activeLeagueId && leagues.length && !select.value) {
-                select.value = String(leagues[0].id);
-            }
-
-            select.addEventListener("change", async (e) => {
-                const leagueId = e.target.value;
-                try {
-                    await fetch("/api/leagues/active", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ leagueId })
-                    });
-                    window.location.reload();
-                } catch (err) {
-                    console.error("Error setting active league:", err);
-                }
-            });
-        } catch (e) {
-            console.error("Error initializing topbar:", e);
+      leagues.forEach((l) => {
+        const opt = document.createElement("option");
+        opt.value = l.id;
+        opt.textContent = l.name;
+        if (activeLeagueId && Number(activeLeagueId) === Number(l.id)) {
+          opt.selected = true;
         }
-    })();
+        select.appendChild(opt);
+      });
+
+      if (!activeLeagueId && leagues.length && !select.value) {
+        select.value = String(leagues[0].id);
+      }
+
+      select.addEventListener("change", async (e) => {
+        const leagueId = e.target.value;
+        try {
+          await fetch("/api/leagues/active", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ leagueId }),
+          });
+          window.location.reload();
+        } catch (err) {
+          console.error("Error setting active league:", err);
+        }
+      });
+    } catch (e) {
+      console.error("Error initializing topbar:", e);
+    }
+  })();
 </script>
