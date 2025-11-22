@@ -6,6 +6,14 @@ import bcrypt from "bcrypt";
 import session from "express-session";
 import fs from "node:fs";
 import makeTradeRoutes from "./scripts/trade.js";
+import {
+  portfolioQueries,
+  portfolioHistoryQueries,
+  priceQueries,
+  leagueQueries,
+  userQueries,
+  coinQueries,
+} from "./scripts/queries.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -100,21 +108,13 @@ function generateJoinCode(length = 6) {
 
 async function ensurePortfolio(userId, leagueId) {
   if (!pool) return;
-  await pool.query(
-    `insert into portfolios (user_id, league_id)
-     values ($1, $2)
-     on conflict (user_id, league_id) do nothing`,
-    [userId, leagueId]
-  );
+  await pool.query(leagueQueries.ensurePortfolio, [userId, leagueId]);
 }
 
 async function ensureSoloLeagueForUser(userId) {
   if (!pool) return { leagueId: null };
 
-  const existing = await pool.query(
-    "select id from leagues where owner_user_id = $1 order by created_at asc limit 1",
-    [userId]
-  );
+  const existing = await pool.query(leagueQueries.getUserFirstLeague, [userId]);
   if (existing.rows.length) {
     const leagueId = existing.rows[0].id;
     await ensurePortfolio(userId, leagueId);
@@ -125,12 +125,11 @@ async function ensureSoloLeagueForUser(userId) {
   while (!leagueId) {
     const code = generateJoinCode();
     try {
-      const result = await pool.query(
-        `insert into leagues (name, owner_user_id, join_code)
-         values ($1, $2, $3)
-         returning id`,
-        ["Solo League", userId, code]
-      );
+      const result = await pool.query(leagueQueries.createSoloLeague, [
+        "Solo League",
+        userId,
+        code,
+      ]);
       leagueId = result.rows[0].id;
     } catch (e) {
       if (e.code === "23505") continue;
@@ -149,14 +148,9 @@ async function getOrCreateCurrentLeagueId(req) {
     return req.session.currentLeagueId;
   }
 
-  const existing = await pool.query(
-    `select league_id
-     from portfolios
-     where user_id = $1
-     order by created_at asc
-     limit 1`,
-    [req.session.userId]
-  );
+  const existing = await pool.query(leagueQueries.getFirstPortfolioLeague, [
+    req.session.userId,
+  ]);
 
   if (existing.rows.length) {
     const leagueId = existing.rows[0].league_id;
@@ -170,10 +164,7 @@ async function getOrCreateCurrentLeagueId(req) {
 }
 
 async function getCurrentPrice(symbolU) {
-  const { rows } = await pool.query(
-    "select price_usd from prices_latest where symbol = $1",
-    [symbolU]
-  );
+  const { rows } = await pool.query(priceQueries.getLatestPrice, [symbolU]);
   return rows[0]?.price_usd ?? null;
 }
 
@@ -197,15 +188,28 @@ app.get("/login", (_req, res) => res.render("login"));
 app.get("/register", (_req, res) => res.render("register"));
 
 // Protected routes - require authentication
-app.get("/index", requireAuth, (req, res) => res.render("index", { activePage: "index" }));
-app.get("/league", requireAuth, (req, res) => res.render("league", { activePage: "league" }));
-app.get("/coins", requireAuth, (req, res) => res.render("coins", { activePage: "coins" }));
-app.get("/coin-detail", requireAuth, (req, res) => res.render("coin-detail", { activePage: "coin-detail" }));
-app.get("/portfolio", requireAuth, (req, res) => res.render("portfolio", { activePage: "portfolio" }));
-
+app.get("/index", requireAuth, (req, res) =>
+  res.render("index", { activePage: "index" })
+);
+app.get("/league", requireAuth, (req, res) =>
+  res.render("league", { activePage: "league" })
+);
+app.get("/coins", requireAuth, (req, res) =>
+  res.render("coins", { activePage: "coins" })
+);
+app.get("/coin-detail", requireAuth, (req, res) =>
+  res.render("coin-detail", { activePage: "coin-detail" })
+);
+app.get("/portfolio", requireAuth, (req, res) =>
+  res.render("portfolio", { activePage: "portfolio" })
+);
 
 // use trade routes module to keep logic out of server.js
-const tradeRoutes = makeTradeRoutes({ pool, COIN_WHITELIST, getOrCreateCurrentLeagueId });
+const tradeRoutes = makeTradeRoutes({
+  pool,
+  COIN_WHITELIST,
+  getOrCreateCurrentLeagueId,
+});
 app.get("/trade", requireAuth, tradeRoutes.tradeGet);
 
 app.get("/health", (_req, res) => res.json({ ok: true }));
@@ -279,10 +283,11 @@ app.post("/api/register", async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
 
     // Insert user
-    const result = await pool.query(
-      "INSERT INTO users (username, email, password_hash) VALUES ($1, $2, $3) RETURNING id, username, email",
-      [username, email, password_hash]
-    );
+    const result = await pool.query(userQueries.createUser, [
+      username,
+      email,
+      password_hash,
+    ]);
 
     const user = result.rows[0];
     req.session.userId = user.id;
@@ -314,9 +319,7 @@ app.post("/api/login", async (req, res) => {
     }
 
     // Find user
-    const result = await pool.query("SELECT * FROM users WHERE username = $1", [
-      username,
-    ]);
+    const result = await pool.query(userQueries.getUserByUsername, [username]);
 
     if (result.rows.length === 0) {
       return res.status(401).json({ error: "Invalid credentials" });
@@ -354,10 +357,9 @@ app.get("/api/me", requireAuth, async (req, res) => {
     if (!pool)
       return res.status(500).json({ error: "Database not configured" });
 
-    const result = await pool.query(
-      "SELECT id, username, email, created_at FROM users WHERE id = $1",
-      [req.session.userId]
-    );
+    const result = await pool.query(userQueries.getUserById, [
+      req.session.userId,
+    ]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "User not found" });
@@ -382,7 +384,11 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
     }
 
     let memberLimit = null;
-    if (memberCount !== undefined && memberCount !== null && memberCount !== "") {
+    if (
+      memberCount !== undefined &&
+      memberCount !== null &&
+      memberCount !== ""
+    ) {
       const n = Number(memberCount);
       if (!Number.isInteger(n) || n < 2 || n > 32) {
         return res
@@ -422,7 +428,9 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
     // Set as current league in session
     req.session.currentLeagueId = leagueId;
 
-    const inviteUrl = `${req.protocol}://${req.get("host")}/league/join/${joinCode}`;
+    const inviteUrl = `${req.protocol}://${req.get(
+      "host"
+    )}/league/join/${joinCode}`;
 
     return res.json({
       success: true,
@@ -434,7 +442,6 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
         inviteUrl,
       },
     });
-
   } catch (e) {
     console.error("Create league error:", e);
     if (!res.headersSent) {
@@ -445,17 +452,19 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
 
 app.post("/api/leagues/join", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
 
-    const rawCode = (req.body.leagueCode || req.body.code || "").trim().toUpperCase();
+    const rawCode = (req.body.leagueCode || req.body.code || "")
+      .trim()
+      .toUpperCase();
     if (!rawCode) {
       return res.status(400).json({ error: "League code is required" });
     }
 
-    const { rows } = await pool.query(
-      "select id, name, member_limit from leagues where join_code = $1",
-      [rawCode]
-    );
+    const { rows } = await pool.query(leagueQueries.getLeagueByJoinCode, [
+      rawCode,
+    ]);
     if (!rows.length) {
       return res.status(404).json({ error: "League not found" });
     }
@@ -481,20 +490,12 @@ app.post("/api/leagues/join", requireAuth, async (req, res) => {
 
 app.get("/api/leagues/mine", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
 
-    const { rows } = await pool.query(
-      `select l.id,
-              l.name,
-              l.join_code,
-              l.owner_user_id = $1 as is_owner
-       from leagues l
-       join portfolios p
-         on p.league_id = l.id
-       where p.user_id = $1
-       order by l.created_at asc`,
-      [req.session.userId]
-    );
+    const { rows } = await pool.query(leagueQueries.getActiveLeagues, [
+      req.session.userId,
+    ]);
 
     const currentLeagueId = req.session.currentLeagueId || null;
 
@@ -510,20 +511,12 @@ app.get("/api/leagues/mine", requireAuth, async (req, res) => {
 
 app.get("/api/leagues/active", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
 
-    const { rows } = await pool.query(
-      `select l.id,
-              l.name,
-              l.join_code,
-              l.owner_user_id = $1 as is_owner
-       from leagues l
-       join portfolios p
-         on p.league_id = l.id
-       where p.user_id = $1
-       order by l.created_at asc`,
-      [req.session.userId]
-    );
+    const { rows } = await pool.query(leagueQueries.getActiveLeagues, [
+      req.session.userId,
+    ]);
 
     // Ensure there is an active league
     let activeLeagueId = req.session.currentLeagueId || null;
@@ -533,7 +526,7 @@ app.get("/api/leagues/active", requireAuth, async (req, res) => {
     }
 
     const activeLeague =
-      rows.find(l => String(l.id) === String(activeLeagueId)) || null;
+      rows.find((l) => String(l.id) === String(activeLeagueId)) || null;
 
     res.json({
       leagues: rows,
@@ -548,7 +541,8 @@ app.get("/api/leagues/active", requireAuth, async (req, res) => {
 
 app.post("/api/leagues/active", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
 
     const { leagueId } = req.body;
     if (!leagueId) {
@@ -556,13 +550,10 @@ app.post("/api/leagues/active", requireAuth, async (req, res) => {
     }
 
     // Make sure this user actually belongs to that league
-    const { rows } = await pool.query(
-      `select 1
-       from portfolios
-       where user_id = $1
-         and league_id = $2`,
-      [req.session.userId, leagueId]
-    );
+    const { rows } = await pool.query(leagueQueries.checkMembership, [
+      req.session.userId,
+      leagueId,
+    ]);
 
     if (!rows.length) {
       return res.status(403).json({ error: "You are not in that league" });
@@ -575,7 +566,6 @@ app.post("/api/leagues/active", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to set active league" });
   }
 });
-
 
 // Get current coin data
 app.get("/api/cg/coins", async (req, res) => {
@@ -661,10 +651,7 @@ app.get("/api/prices/:symbol", async (req, res) => {
   if (!symbol) return res.status(400).json({ error: "symbol required" });
 
   try {
-    const { rows } = await pool.query(
-      "select symbol, ts_min, price_usd from price_points_min where symbol = $1 order by ts_min asc",
-      [symbol]
-    );
+    const { rows } = await pool.query(coinQueries.getPriceHistory, [symbol]);
     if (rows.length === 0) return res.status(404).json({ error: "no data" });
     res.json({ symbol, count: rows.length, points: rows });
   } catch (e) {
@@ -675,31 +662,24 @@ app.get("/api/prices/:symbol", async (req, res) => {
 // Get portfolio: cash, holdings with live value, totals
 app.get("/api/portfolio", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
 
     const leagueId = await getOrCreateCurrentLeagueId(req);
     await ensurePortfolio(req.session.userId, leagueId);
 
     // cash
-    const cashRow = await pool.query(
-      "select cash_usd from portfolios where user_id = $1 and league_id = $2",
-      [req.session.userId, leagueId]
-    );
+    const cashRow = await pool.query(portfolioQueries.getCash, [
+      req.session.userId,
+      leagueId,
+    ]);
     const cash = cashRow.rows.length ? Number(cashRow.rows[0].cash_usd) : 0;
 
     // holdings joined to latest price for THIS league
-    const { rows } = await pool.query(
-      `select h.symbol,
-              h.qty::text as qty,
-              pl.price_usd::text as price_usd,
-              (h.qty * pl.price_usd)::text as market_value
-       from holdings h
-       left join prices_latest pl on pl.symbol = h.symbol
-       where h.user_id = $1
-         and h.league_id = $2
-       order by h.symbol`,
-      [req.session.userId, leagueId]
-    );
+    const { rows } = await pool.query(portfolioQueries.getHoldings, [
+      req.session.userId,
+      leagueId,
+    ]);
 
     const cryptoValue = rows.reduce(
       (sum, r) => sum + Number(r.market_value || 0),
@@ -720,9 +700,126 @@ app.get("/api/portfolio", requireAuth, async (req, res) => {
   }
 });
 
+app.get("/api/portfolio/history", requireAuth, async (req, res) => {
+  try {
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
+
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+    await ensurePortfolio(req.session.userId, leagueId);
+
+    // Get all trades for this user in this league
+    const tradesResult = await pool.query(portfolioHistoryQueries.getTrades, [
+      req.session.userId,
+      leagueId,
+    ]);
+
+    if (tradesResult.rows.length === 0) {
+      // No trades yet - return starting balance
+      return res.json({
+        history: [
+          { timestamp: Date.now() - 24 * 60 * 60 * 1000, value: 100000 },
+          { timestamp: Date.now(), value: 100000 },
+        ],
+      });
+    }
+
+    // Get the first trade timestamp
+    const firstTradeTime = new Date(tradesResult.rows[0].created_at).getTime();
+    const now = Date.now();
+
+    // Get all unique symbols from trades
+    const trades = tradesResult.rows;
+    const symbols = [...new Set(trades.map((t) => t.symbol))];
+
+    // Get current prices for all symbols
+    const pricesResult = await pool.query(
+      portfolioHistoryQueries.getCurrentPricesForSymbols,
+      [symbols]
+    );
+
+    const currentPrices = {};
+    pricesResult.rows.forEach((row) => {
+      currentPrices[row.symbol] = Number(row.price);
+    });
+
+    // Build portfolio value over time by replaying trades
+    let cash = 100000;
+    const holdings = {};
+    const history = [];
+
+    // Starting point - before any trades
+    history.push({
+      timestamp: firstTradeTime - 1000, // 1 second before first trade
+      value: 100000,
+    });
+
+    // Process each trade and calculate portfolio value at that moment
+    for (const trade of trades) {
+      const symbol = trade.symbol;
+      const qty = Number(trade.qty);
+      const price = Number(trade.price_usd);
+      const cost = qty * price;
+
+      if (trade.side === "BUY") {
+        cash -= cost;
+        holdings[symbol] = (holdings[symbol] || 0) + qty;
+      } else {
+        cash += cost;
+        holdings[symbol] = (holdings[symbol] || 0) - qty;
+        if (holdings[symbol] <= 0) {
+          delete holdings[symbol];
+        }
+      }
+
+      // Calculate portfolio value using current market prices
+      let cryptoValue = 0;
+      for (const [sym, holdQty] of Object.entries(holdings)) {
+        const currentPrice = currentPrices[sym] || 0;
+        cryptoValue += holdQty * currentPrice;
+      }
+
+      const tradeTime = new Date(trade.created_at).getTime();
+      history.push({
+        timestamp: tradeTime,
+        value: cash + cryptoValue,
+      });
+    }
+
+    // Add current state
+    const cashNow = await pool.query(portfolioQueries.getCash, [
+      req.session.userId,
+      leagueId,
+    ]);
+    const holdingsNow = await pool.query(
+      portfolioQueries.getHoldingsWithPrices,
+      [req.session.userId, leagueId]
+    );
+
+    const currentCash = cashNow.rows.length
+      ? Number(cashNow.rows[0].cash_usd)
+      : cash;
+    let currentCrypto = 0;
+    holdingsNow.rows.forEach((h) => {
+      currentCrypto += Number(h.qty) * Number(h.price_usd || 0);
+    });
+
+    history.push({
+      timestamp: now,
+      value: currentCash + currentCrypto,
+    });
+
+    res.json({ history });
+  } catch (e) {
+    console.error("portfolio history error:", e);
+    res.status(500).json({ error: String(e) });
+  }
+});
+
 app.post("/api/trade", requireAuth, async (req, res) => {
   try {
-    if (!pool) return res.status(500).json({ error: "Database not configured" });
+    if (!pool)
+      return res.status(500).json({ error: "Database not configured" });
 
     const { symbol, side, quantity } = req.body;
     const symbolU = validateSymbol(symbol);
@@ -748,16 +845,17 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     await pool.query("BEGIN");
 
     // load current cash & qty with FOR UPDATE
-    const cashRow = await pool.query(
-      "select cash_usd from portfolios where user_id = $1 and league_id = $2 for update",
-      [req.session.userId, leagueId]
-    );
+    const cashRow = await pool.query(portfolioQueries.getCashForUpdate, [
+      req.session.userId,
+      leagueId,
+    ]);
     const cash = cashRow.rows.length ? Number(cashRow.rows[0].cash_usd) : 0;
 
-    const hRow = await pool.query(
-      "select qty from holdings where user_id = $1 and league_id = $2 and symbol = $3 for update",
-      [req.session.userId, leagueId, symbolU]
-    );
+    const hRow = await pool.query(portfolioQueries.getHoldingForUpdate, [
+      req.session.userId,
+      leagueId,
+      symbolU,
+    ]);
     const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
 
     if (sideU === "BUY") {
@@ -765,64 +863,74 @@ app.post("/api/trade", requireAuth, async (req, res) => {
         await pool.query("ROLLBACK");
         return res.status(400).json({ error: "insufficient cash" });
       }
-      await pool.query(
-        "update portfolios set cash_usd = cash_usd - $1 where user_id = $2 and league_id = $3",
-        [cost, req.session.userId, leagueId]
-      );
-      await pool.query(
-        `insert into holdings (user_id, league_id, symbol, qty)
-         values ($1, $2, $3, $4)
-         on conflict (user_id, league_id, symbol)
-         do update set qty = holdings.qty + excluded.qty`,
-        [req.session.userId, leagueId, symbolU, qty]
-      );
-      await pool.query(
-        `insert into trades (user_id, league_id, symbol, side, qty, price_usd, cost_usd)
-         values ($1,$2,$3,'BUY',$4,$5,$6)`,
-        [req.session.userId, leagueId, symbolU, qty, px, cost]
-      );
+      await pool.query(portfolioQueries.updateCash, [
+        req.session.userId,
+        leagueId,
+        cash - cost,
+      ]);
+      await pool.query(portfolioQueries.upsertHolding, [
+        req.session.userId,
+        leagueId,
+        symbolU,
+        curQty + qty,
+      ]);
+      await pool.query(portfolioQueries.insertTrade, [
+        req.session.userId,
+        leagueId,
+        symbolU,
+        "BUY",
+        qty,
+        px,
+        cost,
+      ]);
     } else {
       // SELL
       if (curQty < qty) {
         await pool.query("ROLLBACK");
         return res.status(400).json({ error: "insufficient quantity" });
       }
-      await pool.query(
-        "update portfolios set cash_usd = cash_usd + $1 where user_id = $2 and league_id = $3",
-        [cost, req.session.userId, leagueId]
-      );
-      await pool.query(
-        "update holdings set qty = qty - $1 where user_id = $2 and league_id = $3 and symbol = $4",
-        [qty, req.session.userId, leagueId, symbolU]
-      );
-      await pool.query(
-        "delete from holdings where user_id = $1 and league_id = $2 and symbol = $3 and qty <= 0",
-        [req.session.userId, leagueId, symbolU]
-      );
-      await pool.query(
-        `insert into trades (user_id, league_id, symbol, side, qty, price_usd, cost_usd)
-         values ($1,$2,$3,'SELL',$4,$5,$6)`,
-        [req.session.userId, leagueId, symbolU, qty, px, cost]
-      );
+      await pool.query(portfolioQueries.updateCash, [
+        req.session.userId,
+        leagueId,
+        cash + cost,
+      ]);
+      const newQty = curQty - qty;
+      if (newQty <= 0) {
+        await pool.query(portfolioQueries.deleteHolding, [
+          req.session.userId,
+          leagueId,
+          symbolU,
+        ]);
+      } else {
+        await pool.query(portfolioQueries.upsertHolding, [
+          req.session.userId,
+          leagueId,
+          symbolU,
+          newQty,
+        ]);
+      }
+      await pool.query(portfolioQueries.insertTrade, [
+        req.session.userId,
+        leagueId,
+        symbolU,
+        "SELL",
+        qty,
+        px,
+        cost,
+      ]);
     }
 
     await pool.query("COMMIT");
 
     // return fresh snapshot for this league
-    const { rows } = await pool.query(
-      `select h.symbol, h.qty::text as qty, pl.price_usd::text as price_usd,
-              (h.qty * pl.price_usd)::text as market_value
-       from holdings h
-       left join prices_latest pl on pl.symbol = h.symbol
-       where h.user_id = $1
-         and h.league_id = $2
-       order by h.symbol`,
-      [req.session.userId, leagueId]
-    );
-    const cash2Row = await pool.query(
-      "select cash_usd from portfolios where user_id = $1 and league_id = $2",
-      [req.session.userId, leagueId]
-    );
+    const { rows } = await pool.query(portfolioQueries.getHoldings, [
+      req.session.userId,
+      leagueId,
+    ]);
+    const cash2Row = await pool.query(portfolioQueries.getCash, [
+      req.session.userId,
+      leagueId,
+    ]);
     const cash2 = cash2Row.rows.length ? Number(cash2Row.rows[0].cash_usd) : 0;
     const cryptoValue = rows.reduce(
       (s, r) => s + Number(r.market_value || 0),
