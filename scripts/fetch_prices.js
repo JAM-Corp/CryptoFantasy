@@ -42,12 +42,66 @@ if (!dbConfig) {
 }
 
 const CG_VS = (process.env.CG_VS || "usd").trim();
-const IDS = (process.env.CG_IDS || "bitcoin,ethereum,solana")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
 
 const pool = new Pool(dbConfig);
+
+/**
+ * Fallback: get IDs from environment variable CG_IDS
+ */
+function getIdsFromEnv() {
+  const ids = (process.env.CG_IDS || "bitcoin,ethereum,solana")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (ids.length === 0) {
+    console.warn(
+      "No CoinGecko IDs found in CG_IDS and DB query failed/returned none."
+    );
+  } else {
+    console.log(
+      `Using ${ids.length} CoinGecko IDs from CG_IDS fallback: ${ids.join(", ")}`
+    );
+  }
+
+  return ids;
+}
+
+/**
+ * Load CoinGecko IDs from the DB.
+ * Assumes there is a `coins` table with a `coingecko_id` column.
+ * Adjust table/column names if your schema is different.
+ */
+async function loadIdsFromDb() {
+  try {
+    const { rows } = await pool.query(`
+      SELECT DISTINCT coingecko_id AS id, symbol
+      FROM coins
+      WHERE coingecko_id IS NOT NULL AND coingecko_id <> ''
+        AND symbol IS NOT NULL AND symbol <> ''
+    `);
+
+    const ids = rows
+      .map((r) => (r.id || "").trim())
+      .filter(Boolean);
+
+    if (ids.length > 0) {
+      console.log(
+        `Loaded ${ids.length} CoinGecko IDs from DB: ${ids.join(", ")}`
+      );
+      return ids;
+    } else {
+      console.warn("No CoinGecko IDs found in DB; falling back to CG_IDS.");
+      return getIdsFromEnv();
+    }
+  } catch (err) {
+    console.error(
+      "Error loading CoinGecko IDs from DB; falling back to CG_IDS:",
+      err.message || err
+    );
+    return getIdsFromEnv();
+  }
+}
 
 async function fetchBatch(ids) {
   const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(
@@ -61,10 +115,17 @@ async function fetchBatch(ids) {
 }
 
 async function tick() {
-  const data = await fetchBatch(IDS);
+  const ids = await loadIdsFromDb();
+
+  if (!ids || ids.length === 0) {
+    console.warn("No coin IDs configured; skipping tick.");
+    return;
+  }
+
+  const data = await fetchBatch(ids);
   const tsMinSql = "date_trunc('minute', now())";
 
-  for (const id of IDS) {
+  for (const id of ids) {
     const symbol = id.toUpperCase();
     const price = data?.[id]?.[CG_VS];
     if (typeof price !== "number" || !Number.isFinite(price)) continue;
@@ -86,10 +147,6 @@ async function tick() {
       [symbol, price]
     );
   }
-
-  console.log(
-    `tick ok ${new Date().toISOString()} :: ${IDS.length} symbols (vs=${CG_VS})`
-  );
 }
 
 // Main loop: run now, then every minute

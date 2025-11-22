@@ -25,6 +25,51 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 8080;
 let CG_API_KEY = process.env.CG_API_KEY || null;
 
+const STABLE_SYMBOLS = new Set(["usdt", "usdc", "dai", "tusd", "fdusd", "usdd"]);
+const BAD_WORDS = ["wrapped", "staked", "beacon", "wormhole", "pegged", "synthetic", "heloc"];
+
+function filterTopCoinsForApp(data, limit = 10) {
+  const filtered = (data || []).filter((c) => {
+    const sym = (c.symbol || "").toLowerCase();
+    const id = (c.id || "").toLowerCase();
+    const name = (c.name || "").toLowerCase();
+
+    if (STABLE_SYMBOLS.has(sym)) return false;
+    if (sym.startsWith("w") || sym.startsWith("figr_")) return false;
+    if (BAD_WORDS.some((w) => id.includes(w) || name.includes(w))) return false;
+    return true;
+  });
+
+  return filtered.slice(0, limit);
+}
+
+async function getDefaultLeagueCoinSymbols() {
+  try {
+    const url =
+      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false";
+
+    const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      throw new Error(`CoinGecko ${response.status}`);
+    }
+
+    const data = await response.json();
+    const topCoins = filterTopCoinsForApp(data, 10);
+    if (!topCoins.length) throw new Error("No coins after filtering");
+
+    return topCoins.map((c) => (c.symbol || "").toUpperCase()).filter(Boolean);
+  } catch (err) {
+    console.error(
+      "getDefaultLeagueCoinSymbols error; falling back to global COIN_WHITELIST:",
+      err
+    );
+    return COIN_WHITELIST;
+  }
+}
+
+
 const cgChartCache = new Map();
 const CG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 mins
 
@@ -97,6 +142,18 @@ function requireAuth(req, res, next) {
 }
 
 // Helpers
+async function getLeagueCoinSymbols(leagueId) {
+  if (!pool || !leagueId) return null;
+  const { rows } = await pool.query(
+    "select coin_symbols from leagues where id = $1",
+    [leagueId]
+  );
+  if (!rows.length) return null;
+  const arr = rows[0].coin_symbols;
+  if (!Array.isArray(arr) || !arr.length) return null;
+  return arr.map((s) => String(s).toUpperCase());
+}
+
 function generateJoinCode(length = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
@@ -105,6 +162,45 @@ function generateJoinCode(length = 6) {
   }
   return out;
 }
+
+async function joinLeagueForUserByCode(userId, rawCode) {
+  if (!pool) {
+    const err = new Error("Database not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const code = (rawCode || "").trim().toUpperCase();
+  if (!code) {
+    const err = new Error("League code is required");
+    err.status = 400;
+    throw err;
+  }
+
+  const { rows } = await pool.query(leagueQueries.getLeagueByJoinCode, [code]);
+  if (!rows.length) {
+    const err = new Error("League not found");
+    err.status = 404;
+    throw err;
+  }
+
+  const league = rows[0];
+
+  if (league.member_limit != null) {
+    const countRes = await pool.query(leagueQueries.countLeagueMembers, [league.id]);
+    const memberCount = Number(countRes.rows[0].member_count || 0);
+    if (memberCount >= league.member_limit) {
+      const err = new Error("League is full");
+      err.status = 409;
+      throw err;
+    }
+  }
+
+  await ensurePortfolio(userId, league.id);
+
+  return league;
+}
+
 
 async function ensurePortfolio(userId, leagueId) {
   if (!pool) return;
@@ -121,6 +217,8 @@ async function ensureSoloLeagueForUser(userId) {
     return { leagueId };
   }
 
+  const leagueCoinSymbols = await getDefaultLeagueCoinSymbols();
+
   let leagueId = null;
   while (!leagueId) {
     const code = generateJoinCode();
@@ -129,6 +227,7 @@ async function ensureSoloLeagueForUser(userId) {
         "Solo League",
         userId,
         code,
+        leagueCoinSymbols,
       ]);
       leagueId = result.rows[0].id;
     } catch (e) {
@@ -140,6 +239,7 @@ async function ensureSoloLeagueForUser(userId) {
   await ensurePortfolio(userId, leagueId);
   return { leagueId };
 }
+
 
 async function getOrCreateCurrentLeagueId(req) {
   if (!pool) return null;
@@ -168,9 +268,14 @@ async function getCurrentPrice(symbolU) {
   return rows[0]?.price_usd ?? null;
 }
 
-function validateSymbol(raw) {
+function validateSymbol(raw, allowedSymbols) {
   const s = (raw || "").trim().toUpperCase();
-  if (!s || !COIN_WHITELIST.includes(s)) return null;
+  const baseList =
+    Array.isArray(allowedSymbols) && allowedSymbols.length
+      ? allowedSymbols.map((x) => String(x).toUpperCase())
+      : COIN_WHITELIST;
+
+  if (!s || !baseList.includes(s)) return null;
   return s;
 }
 
@@ -194,6 +299,24 @@ app.get("/index", requireAuth, (req, res) =>
 app.get("/league", requireAuth, (req, res) =>
   res.render("league", { activePage: "league" })
 );
+app.get("/league/join/:code", async (req, res) => {
+  const joinCode = req.params.code;
+  if (!req.session.userId) {
+    return res.redirect(`/login?join=${encodeURIComponent(joinCode)}`);
+  }
+  try {
+    const league = await joinLeagueForUserByCode(req.session.userId, joinCode);
+    req.session.currentLeagueId = league.id;
+    return res.redirect("/portfolio");
+  } catch (e) {
+    const status = e.status || 500;
+    if (!res.headersSent) {
+      return res
+        .status(status)
+        .send(e.status ? e.message : "Failed to join league");
+    }
+  }
+});
 app.get("/coins", requireAuth, (req, res) =>
   res.render("coins", { activePage: "coins" })
 );
@@ -377,7 +500,7 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
       return res.status(500).json({ error: "Database not configured" });
     }
 
-    const { name, memberCount } = req.body;
+    const { name, memberCount, durationDays, matchupFrequency } = req.body;
     const trimmedName = (name || "").trim();
     if (!trimmedName) {
       return res.status(400).json({ error: "League name is required" });
@@ -398,26 +521,44 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
       memberLimit = n;
     }
 
+    const duration = Number(durationDays);
+    let freq = (matchupFrequency || "").toUpperCase();
+
+    if (freq !== "DAILY" && freq !== "WEEKLY") {
+      freq = "WEEKLY";
+    }
+
+    const settings = {
+      durationDays: Number.isFinite(duration) && duration > 0 ? duration : null,
+      matchupFrequency: freq,
+    };
+
     let leagueId = null;
     let joinCode = null;
+
+    const leagueCoinSymbols = await getDefaultLeagueCoinSymbols();
 
     // Keep trying until we get a unique join code
     while (!leagueId) {
       joinCode = generateJoinCode();
       try {
         const result = await pool.query(
-          `insert into leagues (name, owner_user_id, join_code, member_limit)
-           values ($1, $2, $3, $4)
-           returning id`,
-          [trimmedName, req.session.userId, joinCode, memberLimit]
+          `insert into leagues (name, owner_user_id, join_code, member_limit, coin_symbols, settings)
+           values ($1, $2, $3, $4, $5, $6)
+           returning id, coin_symbols, settings`,
+          [
+            trimmedName,
+            req.session.userId,
+            joinCode,
+            memberLimit,
+            leagueCoinSymbols,
+            JSON.stringify(settings),
+          ]
         );
         leagueId = result.rows[0].id;
         console.log("Created league:", result.rows[0]);
       } catch (e) {
-        // 23505 = unique_violation (likely join_code collision)
-        if (e.code === "23505") {
-          continue;
-        }
+        if (e.code === "23505") continue; // join_code collision
         throw e;
       }
     }
@@ -440,6 +581,8 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
         joinCode,
         memberLimit,
         inviteUrl,
+        coinSymbols: leagueCoinSymbols,
+        settings,
       },
     });
   } catch (e) {
@@ -450,29 +593,15 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
   }
 });
 
+
 app.post("/api/leagues/join", requireAuth, async (req, res) => {
   try {
     if (!pool)
       return res.status(500).json({ error: "Database not configured" });
 
-    const rawCode = (req.body.leagueCode || req.body.code || "")
-      .trim()
-      .toUpperCase();
-    if (!rawCode) {
-      return res.status(400).json({ error: "League code is required" });
-    }
+    const rawCode = req.body.leagueCode || req.body.code || "";
 
-    const { rows } = await pool.query(leagueQueries.getLeagueByJoinCode, [
-      rawCode,
-    ]);
-    if (!rows.length) {
-      return res.status(404).json({ error: "League not found" });
-    }
-
-    const league = rows[0];
-
-    await ensurePortfolio(req.session.userId, league.id);
-
+    const league = await joinLeagueForUserByCode(req.session.userId, rawCode);
     req.session.currentLeagueId = league.id;
 
     res.json({
@@ -484,6 +613,9 @@ app.post("/api/leagues/join", requireAuth, async (req, res) => {
     });
   } catch (e) {
     console.error("Join league error:", e);
+    if (e.status) {
+      return res.status(e.status).json({ error: e.message });
+    }
     res.status(500).json({ error: "Failed to join league" });
   }
 });
@@ -567,7 +699,7 @@ app.post("/api/leagues/active", requireAuth, async (req, res) => {
   }
 });
 
-// Get current coin data
+// Get current coin data (top filtered list)
 app.get("/api/cg/coins", async (req, res) => {
   try {
     const url =
@@ -579,8 +711,17 @@ app.get("/api/cg/coins", async (req, res) => {
     if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
 
     const data = await response.json();
+    const topCoins = filterTopCoinsForApp(data, 10);
 
-    res.json(data);
+    const payload = topCoins.map((c) => ({
+      id: c.id,
+      symbol: c.symbol,
+      name: c.name,
+      current_price: c.current_price,
+      market_cap_rank: c.market_cap_rank,
+    }));
+
+    res.json(payload);
   } catch (err) {
     console.error("Error fetching CoinGecko coins:", err);
     res.status(500).json({ error: "Failed to fetch coins" });
@@ -822,20 +963,30 @@ app.post("/api/trade", requireAuth, async (req, res) => {
       return res.status(500).json({ error: "Database not configured" });
 
     const { symbol, side, quantity } = req.body;
-    const symbolU = validateSymbol(symbol);
     const sideU = (side || "").toUpperCase();
     const qty = Number(quantity);
 
-    if (!symbolU) return res.status(400).json({ error: "symbol not allowed" });
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+    await ensurePortfolio(req.session.userId, leagueId);
+
+    // Load this league's coin whitelist (fallback to global if null)
+    let allowedSymbols = null;
+    try {
+      allowedSymbols = await getLeagueCoinSymbols(leagueId);
+    } catch (e) {
+      console.error("Failed to load coin_symbols for league", leagueId, e);
+    }
+
+    const symbolU = validateSymbol(symbol, allowedSymbols);
+
+    if (!symbolU)
+      return res.status(400).json({ error: "symbol not allowed for this league" });
     if (sideU !== "BUY" && sideU !== "SELL")
       return res.status(400).json({ error: "side must be BUY or SELL" });
     if (!Number.isFinite(qty) || qty <= 0)
       return res.status(400).json({ error: "quantity must be > 0" });
 
-    const leagueId = await getOrCreateCurrentLeagueId(req);
-    await ensurePortfolio(req.session.userId, leagueId);
-
-    // fetch price
+    // fetch price using symbolU
     const price = await getCurrentPrice(symbolU);
     if (!price)
       return res.status(400).json({ error: "no current price; try later" });

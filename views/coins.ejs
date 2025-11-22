@@ -266,78 +266,57 @@
     </div>
 
     <script>
-        async function getCoins() {
-            const r = await fetch(`/api/cg/coins`);
-            const data = await r.json();
+    async function getCoins() {
+        const r = await fetch(`/api/cg/coins`);
+        const coins = await r.json();
 
-            const STABLE = new Set(["usdt", "usdc", "dai", "tusd", "fdusd", "usdd"]);
-            const BAD_WORDS = ["wrapped", "staked", "beacon", "wormhole", "pegged", "synthetic", "heloc"];
+        const coinsContainer = document.getElementById("coins-container");
+        coinsContainer.innerHTML = "";
 
-            const filteredCoins = data.filter((c) => {
-                const sym = (c.symbol || "").toLowerCase();
-                const id = (c.id || "").toLowerCase();
-                const name = (c.name || "").toLowerCase();
+        coins.forEach((coin) => {
+        const card = document.createElement("div");
+        card.className = "coin-card";
 
-                if (STABLE.has(sym) || sym.startsWith("w") || sym.startsWith("figr_")) return false;
-                if (BAD_WORDS.some(w => id.includes(w) || name.includes(w))) return false;
+        const row = document.createElement("div");
+        row.className = "coin-row";
 
-                return true;
-            })
+        const icon = document.createElement("span");
+        icon.className = "coin-icon";
 
-            const coins = filteredCoins.slice(0, 10).map((c) => ({
-                id: c.id,
-                symbol: c.symbol,
-                name: c.name,
-                current_price: c.current_price,
-                market_cap_rank: c.market_cap_rank,
-            }));
+        const meta = document.createElement("div");
+        meta.className = "coins-meta";
 
-            const coinsContainer = document.getElementById("coins-container");
-            coinsContainer.innerHTML = "";
+        const title = document.createElement("div");
+        title.className = "coin-title";
+        title.textContent = coin.name;
 
-            coins.forEach(coin => {
-                const card = document.createElement("div");
-                card.className = "coin-card";
+        const sub = document.createElement("div");
+        sub.className = "coin-sub";
+        sub.textContent = `Rank #${coin.market_cap_rank ?? "N/A"}`;
 
-                const row = document.createElement("div");
-                row.className = "coin-row";
+        const right = document.createElement("div");
+        right.className = "coin-right";
+        right.textContent = `$${Number(coin.current_price).toFixed(2)}`;
 
-                const icon = document.createElement("span");
-                icon.className = "coin-icon";
+        meta.appendChild(title);
+        meta.appendChild(sub);
 
-                const meta = document.createElement("div");
-                meta.className = "coins-meta";
+        row.appendChild(icon);
+        row.appendChild(meta);
+        row.appendChild(right);
+        card.appendChild(row);
 
-                const title = document.createElement("div");
-                title.className = "coin-title";
-                title.textContent = coin.name;
+        card.addEventListener("click", () => {
+            window.location.href = `/coin-detail?id=${coin.id}&symbol=${coin.symbol}&price=${coin.current_price}`;
+        });
 
-                const sub = document.createElement("div");
-                sub.className = "coin-sub";
-                sub.textContent = `Rank #${coin.market_cap_rank ?? "N/A"}`;
+        coinsContainer.appendChild(card);
+        });
+    }
 
-                const right = document.createElement("div");
-                right.className = "coin-right";
-                right.textContent = `$${Number(coin.current_price).toFixed(2)}`;
-
-                meta.appendChild(title);
-                meta.appendChild(sub);
-
-                row.appendChild(icon);
-                row.appendChild(meta);
-                row.appendChild(right);
-                card.appendChild(row);
-
-                card.addEventListener("click", () => {
-                    window.location.href = `/coin-detail?id=${coin.id}&symbol=${coin.symbol}&price=${coin.current_price}`;
-                });
-
-                coinsContainer.appendChild(card);
-            });
-        }
-
-        getCoins();
+    getCoins();
     </script>
+
 </body>
 
 </html>

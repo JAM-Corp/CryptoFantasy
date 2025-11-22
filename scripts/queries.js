@@ -186,8 +186,8 @@ export const leagueQueries = {
   `,
 
   createSoloLeague: `
-    INSERT INTO leagues (name, owner_user_id, join_code)
-    VALUES ($1, $2, $3)
+    INSERT INTO leagues (name, owner_user_id, join_code, coin_symbols)
+    VALUES ($1, $2, $3, $4)
     RETURNING id
   `,
 

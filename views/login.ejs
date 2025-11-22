@@ -253,6 +253,9 @@
             toggle.setAttribute("aria-pressed", String(isHidden));
           });
 
+          const params = new URLSearchParams(window.location.search);
+          const joinCodeParam = params.get("join");
+
           form.addEventListener("submit", async (e) => {
             e.preventDefault();
             let ok = true;
@@ -289,7 +292,11 @@
               const data = await response.json();
 
               if (response.ok) {
-                window.location.href = "/index";
+                if (joinCodeParam) {
+                  window.location.href = `/league/join/${encodeURIComponent(joinCodeParam)}`;
+                } else {
+                  window.location.href = "/index";
+                }
               } else {
                 pwErr.textContent = data.error || "Login failed";
                 pwErr.style.display = "block";

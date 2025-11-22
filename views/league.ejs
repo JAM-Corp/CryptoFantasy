@@ -391,6 +391,21 @@
       .modal-btn.cancel:hover {
         background: #4b5563;
       }
+
+      .radio-row {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        font-size: 14px;
+        color: #e6eef8;
+      }
+
+      .radio-row label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
     </style>
   </head>
   <body>
@@ -487,6 +502,41 @@
             />
           </div>
 
+          <div class="form-group">
+            <label class="form-label" for="leagueDuration">League Duration (days)</label>
+            <input
+              type="number"
+              id="leagueDuration"
+              class="form-input"
+              placeholder="e.g. 30"
+              min="1"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <span class="form-label">Matchup Frequency</span>
+            <div class="radio-row">
+              <label>
+                <input
+                  type="radio"
+                  name="matchupFrequency"
+                  value="WEEKLY"
+                  checked
+                />
+                Weekly
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="matchupFrequency"
+                  value="DAILY"
+                />
+                Daily
+              </label>
+            </div>
+          </div>
+
           <div class="modal-actions">
             <button
               type="button"
@@ -533,7 +583,7 @@
               type="text"
               id="leagueCode"
               class="form-input"
-              placeholder="Enter league code (e.g., ABC123)"
+              placeholder="Enter league code or invite URL"
               required
             />
           </div>
@@ -590,10 +640,37 @@
       async function handleCreateLeague(event) {
         event.preventDefault();
         const leagueName = document.getElementById("leagueName").value.trim();
-        const memberCount = Number(document.getElementById("memberCount").value);
+        const memberCount = Number(
+          document.getElementById("memberCount").value
+        );
+        const durationRaw = document.getElementById("leagueDuration").value;
+        const durationDays = Number(durationRaw);
+        const matchupFrequency =
+          (
+            document.querySelector(
+              'input[name="matchupFrequency"]:checked'
+            ) || {}
+          ).value || "WEEKLY";
 
-        if (!leagueName || !Number.isFinite(memberCount) || memberCount < 2) {
-          showMessage("createLeagueMessage", "Please enter a valid name and member count (>= 2).", true);
+        if (
+          !leagueName ||
+          !Number.isFinite(memberCount) ||
+          memberCount < 2
+        ) {
+          showMessage(
+            "createLeagueMessage",
+            "Please enter a valid name and member count (>= 2).",
+            true
+          );
+          return;
+        }
+
+        if (!Number.isFinite(durationDays) || durationDays <= 0) {
+          showMessage(
+            "createLeagueMessage",
+            "Please enter a positive league duration (in days).",
+            true
+          );
           return;
         }
 
@@ -603,14 +680,20 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               name: leagueName,
-              memberCount: memberCount
+              memberCount: memberCount,
+              durationDays: durationDays,
+              matchupFrequency: matchupFrequency
             })
           });
 
           const data = await res.json();
 
           if (!res.ok) {
-            showMessage("createLeagueMessage", data.error || "Failed to create league.", true);
+            showMessage(
+              "createLeagueMessage",
+              data.error || "Failed to create league.",
+              true
+            );
             return;
           }
 
@@ -626,14 +709,13 @@
           }
 
           showMessage("createLeagueMessage", msg, false);
-
-          setTimeout(() => {
-            closeCreateModal();
-            window.location.reload();
-          }, 1000);
         } catch (err) {
           console.error("Create league error:", err);
-          showMessage("createLeagueMessage", "Network error creating league.", true);
+          showMessage(
+            "createLeagueMessage",
+            "Network error creating league.",
+            true
+          );
         }
       }
 
@@ -652,10 +734,27 @@
 
       async function handleJoinLeague(event) {
         event.preventDefault();
-        const leagueCode = document.getElementById("leagueCode").value.trim();
+        const rawInput = document.getElementById("leagueCode").value.trim();
+
+        if (!rawInput) {
+          showMessage("joinLeagueMessage", "Please enter a league code or invite URL.", true);
+          return;
+        }
+
+        let leagueCode = rawInput;
+
+        try {
+          const maybeUrl = new URL(rawInput);
+          const parts = maybeUrl.pathname.split("/").filter(Boolean);
+          if (parts.length) {
+            leagueCode = parts[parts.length - 1];
+          }
+        } catch (_) {
+          // Not a URL
+        }
 
         if (!leagueCode) {
-          showMessage("joinLeagueMessage", "Please enter a league code.", true);
+          showMessage("joinLeagueMessage", "Could not extract a league code from that input.", true);
           return;
         }
 
@@ -679,11 +778,6 @@
             `Joined league "${league.name}". It is now your active league.`,
             false
           );
-
-          setTimeout(() => {
-            closeJoinModal();
-            window.location.reload();
-          }, 800);
         } catch (err) {
           console.error("Join league error:", err);
           showMessage("joinLeagueMessage", "Network error joining league.", true);
