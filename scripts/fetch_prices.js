@@ -45,9 +45,6 @@ const CG_VS = (process.env.CG_VS || "usd").trim();
 
 const pool = new Pool(dbConfig);
 
-/**
- * Fallback: get IDs from environment variable CG_IDS
- */
 function getIdsFromEnv() {
   const ids = (process.env.CG_IDS || "bitcoin,ethereum,solana")
     .split(",")
@@ -64,32 +61,30 @@ function getIdsFromEnv() {
     );
   }
 
-  return ids;
+  return ids.map((id) => ({
+    id,
+    symbol: id.toUpperCase(),
+  }));
 }
 
-/**
- * Load CoinGecko IDs from the DB.
- * Assumes there is a `coins` table with a `coingecko_id` column.
- * Adjust table/column names if your schema is different.
- */
 async function loadIdsFromDb() {
   try {
     const { rows } = await pool.query(`
-      SELECT DISTINCT coingecko_id AS id, symbol
+      SELECT DISTINCT
+        coingecko_id AS id,
+        UPPER(symbol) AS symbol
       FROM coins
       WHERE coingecko_id IS NOT NULL AND coingecko_id <> ''
         AND symbol IS NOT NULL AND symbol <> ''
     `);
 
-    const ids = rows
-      .map((r) => (r.id || "").trim())
-      .filter(Boolean);
-
-    if (ids.length > 0) {
+    if (rows.length > 0) {
       console.log(
-        `Loaded ${ids.length} CoinGecko IDs from DB: ${ids.join(", ")}`
+        `Loaded ${rows.length} coins from DB:`,
+        rows.map((r) => `${r.symbol}(${r.id})`).join(", ")
       );
-      return ids;
+      // rows is [{ id: 'bitcoin', symbol: 'BTC' }, ...]
+      return rows;
     } else {
       console.warn("No CoinGecko IDs found in DB; falling back to CG_IDS.");
       return getIdsFromEnv();
@@ -115,18 +110,33 @@ async function fetchBatch(ids) {
 }
 
 async function tick() {
-  const ids = await loadIdsFromDb();
+  const coins = await loadIdsFromDb(); 
 
-  if (!ids || ids.length === 0) {
+  if (!coins || coins.length === 0) {
     console.warn("No coin IDs configured; skipping tick.");
+    return;
+  }
+
+  const ids = coins
+    .map((c) => (typeof c === "string" ? c : c.id))
+    .filter(Boolean);
+
+  if (ids.length === 0) {
+    console.warn("No valid CoinGecko IDs after normalization; skipping tick.");
     return;
   }
 
   const data = await fetchBatch(ids);
   const tsMinSql = "date_trunc('minute', now())";
 
-  for (const id of ids) {
-    const symbol = id.toUpperCase();
+  for (const coin of coins) {
+    const id = typeof coin === "string" ? coin : coin.id;
+    const symbol =
+      typeof coin === "string"
+        ? coin.toUpperCase()
+        : (coin.symbol && String(coin.symbol).toUpperCase()) ||
+          String(coin.id).toUpperCase();
+
     const price = data?.[id]?.[CG_VS];
     if (typeof price !== "number" || !Number.isFinite(price)) continue;
 

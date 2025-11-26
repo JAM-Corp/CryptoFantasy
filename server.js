@@ -28,6 +28,10 @@ let CG_API_KEY = process.env.CG_API_KEY || null;
 const STABLE_SYMBOLS = new Set(["usdt", "usdc", "dai", "tusd", "fdusd", "usdd"]);
 const BAD_WORDS = ["wrapped", "staked", "beacon", "wormhole", "pegged", "synthetic", "heloc"];
 
+function normalizeCoinId(raw) {
+  return String(raw || "").trim().toLowerCase();
+}
+
 function filterTopCoinsForApp(data, limit = 10) {
   const filtered = (data || []).filter((c) => {
     const sym = (c.symbol || "").toLowerCase();
@@ -59,7 +63,10 @@ async function getDefaultLeagueCoinSymbols() {
     const topCoins = filterTopCoinsForApp(data, 10);
     if (!topCoins.length) throw new Error("No coins after filtering");
 
-    return topCoins.map((c) => (c.symbol || "").toUpperCase()).filter(Boolean);
+    // IMPORTANT: store CoinGecko IDs (lowercase) instead of tickers
+    return topCoins
+      .map((c) => normalizeCoinId(c.id))
+      .filter(Boolean);
   } catch (err) {
     console.error(
       "getDefaultLeagueCoinSymbols error; falling back to global COIN_WHITELIST:",
@@ -68,7 +75,6 @@ async function getDefaultLeagueCoinSymbols() {
     return COIN_WHITELIST;
   }
 }
-
 
 const cgChartCache = new Map();
 const CG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 mins
@@ -114,7 +120,7 @@ const COIN_WHITELIST = (
   "bitcoin,ethereum,solana"
 )
   .split(",")
-  .map((s) => s.trim().toUpperCase())
+  .map((s) => normalizeCoinId(s))
   .filter(Boolean);
 
 // Middleware
@@ -151,7 +157,8 @@ async function getLeagueCoinSymbols(leagueId) {
   if (!rows.length) return null;
   const arr = rows[0].coin_symbols;
   if (!Array.isArray(arr) || !arr.length) return null;
-  return arr.map((s) => String(s).toUpperCase());
+
+  return arr.map((s) => normalizeCoinId(s));
 }
 
 function generateJoinCode(length = 6) {
@@ -263,21 +270,23 @@ async function getOrCreateCurrentLeagueId(req) {
   return leagueId;
 }
 
-async function getCurrentPrice(symbolU) {
-  const { rows } = await pool.query(priceQueries.getLatestPrice, [symbolU]);
+async function getCurrentPrice(coinId) {
+  const id = normalizeCoinId(coinId);
+  const { rows } = await pool.query(priceQueries.getLatestPrice, [id]);
   return rows[0]?.price_usd ?? null;
 }
 
 function validateSymbol(raw, allowedSymbols) {
-  const s = (raw || "").trim().toUpperCase();
+  const s = normalizeCoinId(raw); 
   const baseList =
     Array.isArray(allowedSymbols) && allowedSymbols.length
-      ? allowedSymbols.map((x) => String(x).toUpperCase())
+      ? allowedSymbols.map((x) => normalizeCoinId(x))
       : COIN_WHITELIST;
 
   if (!s || !baseList.includes(s)) return null;
   return s;
 }
+
 
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
@@ -766,16 +775,16 @@ app.get("/api/cg/coins/:id/market_chart", async (req, res) => {
 });
 
 // Get current price for a coin
-app.get("/api/price/:symbol", async (req, res) => {
+app.get("/api/price/:id", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
 
-  const symbol = (req.params.symbol || "").trim().toUpperCase();
-  if (!symbol) return res.status(400).json({ error: "symbol required" });
+  const coinId = normalizeCoinId(req.params.id);
+  if (!coinId) return res.status(400).json({ error: "id required" });
 
   try {
     const { rows } = await pool.query(
       "select symbol, price_usd, fetched_at from prices_latest where symbol = $1",
-      [symbol]
+      [coinId]
     );
     if (rows.length === 0) return res.status(404).json({ error: "not found" });
     res.json(rows[0]);
@@ -785,16 +794,16 @@ app.get("/api/price/:symbol", async (req, res) => {
 });
 
 // Get all historical prices for a coin
-app.get("/api/prices/:symbol", async (req, res) => {
+app.get("/api/prices/:id", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
 
-  const symbol = (req.params.symbol || "").trim().toUpperCase();
-  if (!symbol) return res.status(400).json({ error: "symbol required" });
+  const coinId = normalizeCoinId(req.params.id);
+  if (!coinId) return res.status(400).json({ error: "id required" });
 
   try {
-    const { rows } = await pool.query(coinQueries.getPriceHistory, [symbol]);
+    const { rows } = await pool.query(coinQueries.getPriceHistory, [coinId]);
     if (rows.length === 0) return res.status(404).json({ error: "no data" });
-    res.json({ symbol, count: rows.length, points: rows });
+    res.json({ id: coinId, count: rows.length, points: rows });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -977,17 +986,20 @@ app.post("/api/trade", requireAuth, async (req, res) => {
       console.error("Failed to load coin_symbols for league", leagueId, e);
     }
 
-    const symbolU = validateSymbol(symbol, allowedSymbols);
+    // Treat "symbol" from the client as CoinGecko ID
+    const coinId = validateSymbol(symbol, allowedSymbols);
 
-    if (!symbolU)
-      return res.status(400).json({ error: "symbol not allowed for this league" });
+    if (!coinId)
+      return res
+        .status(400)
+        .json({ error: "coin not allowed for this league" });
     if (sideU !== "BUY" && sideU !== "SELL")
       return res.status(400).json({ error: "side must be BUY or SELL" });
     if (!Number.isFinite(qty) || qty <= 0)
       return res.status(400).json({ error: "quantity must be > 0" });
 
-    // fetch price using symbolU
-    const price = await getCurrentPrice(symbolU);
+    // fetch price using CoinGecko ID
+    const price = await getCurrentPrice(coinId);
     if (!price)
       return res.status(400).json({ error: "no current price; try later" });
     const px = Number(price);
@@ -1005,7 +1017,7 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     const hRow = await pool.query(portfolioQueries.getHoldingForUpdate, [
       req.session.userId,
       leagueId,
-      symbolU,
+      coinId,
     ]);
     const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
 
@@ -1022,13 +1034,13 @@ app.post("/api/trade", requireAuth, async (req, res) => {
       await pool.query(portfolioQueries.upsertHolding, [
         req.session.userId,
         leagueId,
-        symbolU,
+        coinId,
         curQty + qty,
       ]);
       await pool.query(portfolioQueries.insertTrade, [
         req.session.userId,
         leagueId,
-        symbolU,
+        coinId,
         "BUY",
         qty,
         px,
@@ -1050,20 +1062,20 @@ app.post("/api/trade", requireAuth, async (req, res) => {
         await pool.query(portfolioQueries.deleteHolding, [
           req.session.userId,
           leagueId,
-          symbolU,
+          coinId,
         ]);
       } else {
         await pool.query(portfolioQueries.upsertHolding, [
           req.session.userId,
           leagueId,
-          symbolU,
+          coinId,
           newQty,
         ]);
       }
       await pool.query(portfolioQueries.insertTrade, [
         req.session.userId,
         leagueId,
-        symbolU,
+        coinId,
         "SELL",
         qty,
         px,
@@ -1073,7 +1085,7 @@ app.post("/api/trade", requireAuth, async (req, res) => {
 
     await pool.query("COMMIT");
 
-    // return fresh snapshot for this league
+    // return fresh snapshot for this league (unchanged)
     const { rows } = await pool.query(portfolioQueries.getHoldings, [
       req.session.userId,
       leagueId,
@@ -1105,6 +1117,7 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
 
 app.listen(PORT, () => {
   console.log(`listening on :${PORT}`);
