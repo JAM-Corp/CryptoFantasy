@@ -531,17 +531,16 @@
             <form id="f">
               <label>
                 Select Coin
-                <select name="symbol" id="symbol-select" required>
+                <select name="coinId" id="coin-select" required>
                   <option value="">Choose a cryptocurrency...</option>
                   <% coins.forEach(c => { %>
-                  <option value="<%= c.symbol %>">
-                    <%= c.symbol %><% if (c.price_usd) { %> — $<%=
-                    Number(c.price_usd).toFixed(2) %><% } %>
+                  <option value="<%= c.id %>" data-symbol="<%= c.symbol %>">
+                    <%= c.symbol %><% if (c.price_usd) { %> â€” $<%= Number(c.price_usd).toFixed(2) %><% } %>
                   </option>
                   <% }) %>
                 </select>
                 <div class="selected-price small" id="selected-price">
-                  Price: —
+                  Price: â€”
                 </div>
               </label>
 
@@ -756,20 +755,20 @@
       loadPortfolio();
 
       // Show price when selection changes
-      const symbolSelect = document.getElementById("symbol-select");
+      const coinSelect = document.getElementById("coin-select");
       const selectedPriceEl = document.getElementById("selected-price");
       const amountInput = document.getElementById("amount-usd");
       const btnMax = document.getElementById("btn-max");
       const btnHalf = document.getElementById("btn-half");
 
-      if (symbolSelect) {
-        symbolSelect.addEventListener("change", (e) => {
-          const sym = e.target.value;
-          const obj = coinsData.find(c => c.symbol === sym);
+      if (coinSelect) {
+        coinSelect.addEventListener("change", (e) => {
+          const coinId = e.target.value;
+          const obj = coinsData.find(c => c.id === coinId);
           if (obj && obj.price_usd) {
             selectedPriceEl.textContent = `Price: $${Number(obj.price_usd).toFixed(2)}`;
           } else {
-            selectedPriceEl.textContent = "Price: —";
+            selectedPriceEl.textContent = "Price: â€”";
           }
         });
       }
@@ -795,11 +794,11 @@
         amountInput.value = bal ? String((bal / 2).toFixed(2)) : "";
       });
 
-      async function getPriceForSymbol(sym) {
-        const obj = coinsData.find(c => c.symbol === sym);
+      async function getPriceForCoinId(coinId) {
+        const obj = coinsData.find(c => c.id === coinId);
         if (obj && obj.price_usd) return Number(obj.price_usd);
         try {
-          const r = await fetch(`/api/price/${encodeURIComponent(sym)}`);
+          const r = await fetch(`/api/price/${encodeURIComponent(coinId)}`);
           if (!r.ok) throw new Error("no price");
           const j = await r.json();
           return Number(j.price_usd || j.price || 0);
@@ -824,11 +823,11 @@
         resultDiv.innerHTML = "";
         resultDiv.className = "";
 
-        const symbol = form.symbol.value;
+        const coinId = form.coinId.value;
         const usdAmount = Number(form.amount_usd.value);
 
-        // Client-side validation with UI feedback (no uncaught throws)
-        if (!symbol) {
+        // Client-side validation
+        if (!coinId) {
           resultDiv.className = "result-error";
           resultDiv.innerHTML = `
             <div class="result-header">
@@ -862,14 +861,14 @@
 
         try {
           // determine price and compute quantity to send to server
-          const price = await getPriceForSymbol(symbol);
+          const price = await getPriceForCoinId(coinId);
           if (!price) {
             throw new Error("Price unavailable; try later");
           }
           const qty = +(usdAmount / price).toFixed(8);
 
           const body = {
-            symbol,
+            coinId,
             side: selectedSide,
             quantity: qty,
           };
@@ -880,52 +879,61 @@
             body: JSON.stringify(body),
           });
 
-          const j = await r.json();
+          const data = await r.json();
 
-          if (j.success) {
-            resultDiv.className = "result-success";
+          if (!r.ok || !data.success) {
+            const message = data.error || "Trade failed.";
+            resultDiv.className = "result-error";
             resultDiv.innerHTML = `
               <div class="result-header">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="15" y1="9" x2="9" y2="15"></line>
+                  <line x1="9" y1="9" x2="15" y2="15"></line>
                 </svg>
-                <h3>Trade Successful!</h3>
+                <h3>Trade Failed</h3>
               </div>
-              <div class="result-details">
-                <div class="result-row">
-                  <span>Action:</span>
-                  <span class="highlight">${body.side} ${body.quantity} ${body.symbol}</span>
-                </div>
-                <div class="result-row">
-                  <span>Price:</span>
-                  <span>$${j.price_used_usd}</span>
-                </div>
-                <div class="result-row">
-                  <span>New Cash Balance:</span>
-                  <span class="highlight">$${j.cash_usd}</span>
-                </div>
-                <div class="result-row">
-                  <span>Crypto Value:</span>
-                  <span>$${j.crypto_value_usd}</span>
-                </div>
-                <div class="result-row total">
-                  <span>Total Portfolio Value:</span>
-                  <span class="highlight">$${j.total_value_usd}</span>
-                </div>
-              </div>
+              <p class="error-message">${message}</p>
             `;
-
-            // After successful trade, refresh portfolio from server to get canonical values
-            await loadPortfolio();
-
-            // Reset form
-            form.reset();
-          } else {
-            throw new Error(j.error || "Trade failed");
+            return;
           }
+
+          // success UI (simplified)
+          resultDiv.className = "result-success";
+          resultDiv.innerHTML = `
+            <div class="result-header">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5"></path>
+              </svg>
+              <h3>Trade Executed</h3>
+            </div>
+            <div class="result-details">
+              <div class="result-row">
+                <span>Side</span>
+                <span>${selectedSide}</span>
+              </div>
+              <div class="result-row">
+                <span>Coin</span>
+                <span>${coinId}</span>
+              </div>
+              <div class="result-row">
+                <span>Quantity</span>
+                <span>${qty}</span>
+              </div>
+              <div class="result-row total">
+                <span>Total Cost</span>
+                <span>$${usdAmount.toFixed(2)}</span>
+              </div>
+            </div>
+          `;
+
+          // refresh holdings + balance from backend
+          await loadPortfolio();
+          form.reset();
+          selectedPriceEl.textContent = "Price: â€”";
+
         } catch (err) {
-          const errorMsg = err.message || "An error occurred";
+          console.error("trade error", err);
           resultDiv.className = "result-error";
           resultDiv.innerHTML = `
             <div class="result-header">
@@ -936,7 +944,7 @@
               </svg>
               <h3>Trade Failed</h3>
             </div>
-            <p class="error-message">${errorMsg}</p>
+            <p class="error-message">${err.message || "Unexpected error"}</p>
           `;
         }
       });

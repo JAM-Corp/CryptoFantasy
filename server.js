@@ -69,7 +69,7 @@ const COIN_WHITELIST = (
   "bitcoin,ethereum,solana"
 )
   .split(",")
-  .map((s) => s.trim().toUpperCase())
+  .map((s) => s.trim().toLowerCase())
   .filter(Boolean);
 
 // Middleware
@@ -163,15 +163,16 @@ async function getOrCreateCurrentLeagueId(req) {
   return leagueId;
 }
 
-async function getCurrentPrice(symbolU) {
-  const { rows } = await pool.query(priceQueries.getLatestPrice, [symbolU]);
+async function getCurrentPrice(coinId) {
+  // coinId is a CoinGecko id like "bitcoin"
+  const { rows } = await pool.query(priceQueries.getLatestPrice, [coinId]);
   return rows[0]?.price_usd ?? null;
 }
 
-function validateSymbol(raw) {
-  const s = (raw || "").trim().toUpperCase();
-  if (!s || !COIN_WHITELIST.includes(s)) return null;
-  return s;
+function validateCoinId(raw) {
+  const id = (raw || "").trim().toLowerCase();
+  if (!id || !COIN_WHITELIST.includes(id)) return null;
+  return id;
 }
 
 // Redirect root to login if not authenticated, otherwise to dashboard
@@ -624,17 +625,17 @@ app.get("/api/cg/coins/:id/market_chart", async (req, res) => {
   }
 });
 
-// Get current price for a coin
-app.get("/api/price/:symbol", async (req, res) => {
+// Get current price for a coin by CoinGecko id
+app.get("/api/price/:id", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
 
-  const symbol = (req.params.symbol || "").trim().toUpperCase();
-  if (!symbol) return res.status(400).json({ error: "symbol required" });
+  const coinId = (req.params.id || "").trim().toLowerCase();
+  if (!coinId) return res.status(400).json({ error: "id required" });
 
   try {
     const { rows } = await pool.query(
-      "select symbol, price_usd, fetched_at from prices_latest where symbol = $1",
-      [symbol]
+      "select coin_id as id, price_usd, fetched_at from prices_latest where coin_id = $1",
+      [coinId]
     );
     if (rows.length === 0) return res.status(404).json({ error: "not found" });
     res.json(rows[0]);
@@ -643,17 +644,17 @@ app.get("/api/price/:symbol", async (req, res) => {
   }
 });
 
-// Get all historical prices for a coin
-app.get("/api/prices/:symbol", async (req, res) => {
+// Get all historical prices for a coin by CoinGecko id
+app.get("/api/prices/:id", async (req, res) => {
   if (!pool) return res.status(500).json({ error: "Database not configured" });
 
-  const symbol = (req.params.symbol || "").trim().toUpperCase();
-  if (!symbol) return res.status(400).json({ error: "symbol required" });
+  const coinId = (req.params.id || "").trim().toLowerCase();
+  if (!coinId) return res.status(400).json({ error: "id required" });
 
   try {
-    const { rows } = await pool.query(coinQueries.getPriceHistory, [symbol]);
+    const { rows } = await pool.query(coinQueries.getPriceHistory, [coinId]);
     if (rows.length === 0) return res.status(404).json({ error: "no data" });
-    res.json({ symbol, count: rows.length, points: rows });
+    res.json({ id: coinId, count: rows.length, points: rows });
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -821,12 +822,14 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     if (!pool)
       return res.status(500).json({ error: "Database not configured" });
 
-    const { symbol, side, quantity } = req.body;
-    const symbolU = validateSymbol(symbol);
+    const { coinId, side, quantity } = req.body;
+
+    const coinIdSafe = validateCoinId(coinId);
     const sideU = (side || "").toUpperCase();
     const qty = Number(quantity);
 
-    if (!symbolU) return res.status(400).json({ error: "symbol not allowed" });
+    if (!coinIdSafe)
+      return res.status(400).json({ error: "coin id not allowed" });
     if (sideU !== "BUY" && sideU !== "SELL")
       return res.status(400).json({ error: "side must be BUY or SELL" });
     if (!Number.isFinite(qty) || qty <= 0)
@@ -836,7 +839,7 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     await ensurePortfolio(req.session.userId, leagueId);
 
     // fetch price
-    const price = await getCurrentPrice(symbolU);
+    const price = await getCurrentPrice(coinIdSafe);
     if (!price)
       return res.status(400).json({ error: "no current price; try later" });
     const px = Number(price);
@@ -854,7 +857,7 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     const hRow = await pool.query(portfolioQueries.getHoldingForUpdate, [
       req.session.userId,
       leagueId,
-      symbolU,
+      coinIdSafe,      // <- CG id
     ]);
     const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
 
@@ -871,13 +874,13 @@ app.post("/api/trade", requireAuth, async (req, res) => {
       await pool.query(portfolioQueries.upsertHolding, [
         req.session.userId,
         leagueId,
-        symbolU,
+        coinIdSafe,
         curQty + qty,
       ]);
       await pool.query(portfolioQueries.insertTrade, [
         req.session.userId,
         leagueId,
-        symbolU,
+        coinIdSafe,
         "BUY",
         qty,
         px,
@@ -899,20 +902,20 @@ app.post("/api/trade", requireAuth, async (req, res) => {
         await pool.query(portfolioQueries.deleteHolding, [
           req.session.userId,
           leagueId,
-          symbolU,
+          coinIdSafe,
         ]);
       } else {
         await pool.query(portfolioQueries.upsertHolding, [
           req.session.userId,
           leagueId,
-          symbolU,
+          coinIdSafe,
           newQty,
         ]);
       }
       await pool.query(portfolioQueries.insertTrade, [
         req.session.userId,
         leagueId,
-        symbolU,
+        coinIdSafe,
         "SELL",
         qty,
         px,
