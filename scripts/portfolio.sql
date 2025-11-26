@@ -4,6 +4,8 @@ create table if not exists leagues (
   owner_user_id  integer     not null references users(id) on delete cascade,
   join_code      text        not null unique,
   member_limit   integer     check (member_limit is null OR member_limit between 2 and 1000),
+  coin_symbols   text[],
+  settings       jsonb,
   created_at     timestamptz not null default now()
 );
 
