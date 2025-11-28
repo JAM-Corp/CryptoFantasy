@@ -478,16 +478,18 @@
         <p class="modal-subtitle">Set up your fantasy crypto league</p>
 
         <form id="createLeagueForm" onsubmit="handleCreateLeague(event)">
-          <div class="form-group">
-            <label class="form-label" for="leagueName">League Name</label>
-            <input
-              type="text"
-              id="leagueName"
-              class="form-input"
-              placeholder="Enter league name"
-              required
-            />
-          </div>
+        <div class="form-group">
+          <label class="form-label" for="matchupCount">Number of Matchups</label>
+          <input
+            type="number"
+            id="matchupCount"
+            class="form-input"
+            placeholder="e.g. 6"
+            min="1"
+            max="1000"
+            required
+          />
+        </div>
 
           <div class="form-group">
             <label class="form-label" for="memberCount">Number of Members</label>
@@ -643,8 +645,8 @@
         const memberCount = Number(
           document.getElementById("memberCount").value
         );
-        const durationRaw = document.getElementById("leagueDuration").value;
-        const durationDays = Number(durationRaw);
+        const matchupRaw = document.getElementById("matchupCount").value;
+        const matchupCount = Number(matchupRaw);
         const matchupFrequency =
           (
             document.querySelector(
@@ -665,10 +667,14 @@
           return;
         }
 
-        if (!Number.isFinite(durationDays) || durationDays <= 0) {
+        if (
+          !Number.isInteger(matchupCount) ||
+          matchupCount <= 0 ||
+          matchupCount > 1000
+        ) {
           showMessage(
             "createLeagueMessage",
-            "Please enter a positive league duration (in days).",
+            "Please enter a positive number of matchups (1–1000).",
             true
           );
           return;
@@ -681,7 +687,7 @@
             body: JSON.stringify({
               name: leagueName,
               memberCount: memberCount,
-              durationDays: durationDays,
+              matchupCount: matchupCount,
               matchupFrequency: matchupFrequency
             })
           });
