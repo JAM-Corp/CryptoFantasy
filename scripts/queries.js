@@ -143,19 +143,27 @@ export const leagueQueries = {
   `,
 
   getActiveLeagues: `
-    SELECT l.id,
-          l.name,
-          l.join_code,
-          l.member_limit,
-          l.status,
-          l.winner_user_id,
-          l.completed_at,
-          COUNT(DISTINCT p.user_id) AS member_count
+    SELECT
+      l.id,
+      l.name,
+      l.join_code,
+      l.member_limit,
+      l.status,
+      l.winner_user_id,
+      l.completed_at,
+      (
+        SELECT COUNT(*)
+        FROM portfolios p2
+        WHERE p2.league_id = l.id
+      ) AS member_count
     FROM leagues l
-    LEFT JOIN portfolios p ON p.league_id = l.id
     WHERE l.owner_user_id = $1
-      OR p.user_id = $1
-    GROUP BY l.id, l.name, l.join_code, l.member_limit, l.status, l.winner_user_id, l.completed_at
+      OR EXISTS (
+            SELECT 1
+            FROM portfolios p3
+            WHERE p3.league_id = l.id
+              AND p3.user_id = $1
+          )
     ORDER BY l.created_at ASC
   `,
 
