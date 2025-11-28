@@ -275,22 +275,10 @@ function computeLeagueSchedule({ league, members }) {
   const numPlayers = players.length;
   const baseRounds = numPlayers - 1;
 
-  let maxRounds = baseRounds;
-  const durationDays = Number(settings.durationDays);
-  if (Number.isFinite(durationDays) && durationDays > 0) {
-    const roundsByDuration = Math.floor(durationDays / (isDaily ? 1 : 7));
-    if (roundsByDuration > 0) {
-      maxRounds = Math.min(maxRounds, roundsByDuration);
-    }
-  }
-
+  const baseRoundMatchups = [];
   let arr = players.slice();
-  const schedule = [];
 
-  for (let r = 0; r < maxRounds; r++) {
-    const roundStart = new Date(startDate.getTime() + r * intervalMs);
-    const roundEnd = new Date(roundStart.getTime() + intervalMs - 1);
-
+  for (let r = 0; r < baseRounds; r++) {
     const matchups = [];
     const half = numPlayers / 2;
 
@@ -317,13 +305,7 @@ function computeLeagueSchedule({ league, members }) {
       }
     }
 
-    schedule.push({
-      roundIndex: r + 1,
-      label: isDaily ? `Day ${r + 1}` : `Week ${r + 1}`,
-      start: roundStart.toISOString(),
-      end: roundEnd.toISOString(),
-      matchups,
-    });
+    baseRoundMatchups.push(matchups);
 
     const fixed = arr[0];
     const rest = arr.slice(1);
@@ -331,8 +313,53 @@ function computeLeagueSchedule({ league, members }) {
     arr = [fixed, ...rest];
   }
 
+  let totalRounds = null;
+
+  const matchupCountSetting = Number(settings.matchupCount);
+  const hasMatchupCount =
+    Number.isInteger(matchupCountSetting) && matchupCountSetting > 0;
+
+  if (hasMatchupCount) {
+    totalRounds = matchupCountSetting;
+  } else {
+    let maxRounds = baseRounds;
+    const durationDays = Number(settings.durationDays);
+    if (Number.isFinite(durationDays) && durationDays > 0) {
+      const roundsByDuration = Math.floor(durationDays / (isDaily ? 1 : 7));
+      if (roundsByDuration > 0) {
+        maxRounds = Math.min(baseRounds, roundsByDuration);
+      }
+    }
+    totalRounds = maxRounds;
+  }
+
+  if (!Number.isInteger(totalRounds) || totalRounds <= 0) {
+    totalRounds = baseRounds;
+  }
+
+  const schedule = [];
+
+  for (let r = 0; r < totalRounds; r++) {
+    const patternIndex = r % baseRounds;
+    const roundStart = new Date(startDate.getTime() + r * intervalMs);
+    const roundEnd = new Date(roundStart.getTime() + intervalMs - 1);
+
+    const templateMatchups = baseRoundMatchups[patternIndex];
+
+    const matchups = templateMatchups.map((m) => ({ ...m }));
+
+    schedule.push({
+      roundIndex: r + 1,
+      label: isDaily ? `Day ${r + 1}` : `Week ${r + 1}`,
+      start: roundStart.toISOString(),
+      end: roundEnd.toISOString(),
+      matchups,
+    });
+  }
+
   return schedule;
 }
+
 
 async function getPriceAtOrBefore(symbol, asOf) {
   if (!pool) return 0;
@@ -858,7 +885,7 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
       return res.status(500).json({ error: "Database not configured" });
     }
 
-    const { name, memberCount, durationDays, matchupFrequency } = req.body;
+    const { name, memberCount, matchupCount, matchupFrequency } = req.body;
     const trimmedName = (name || "").trim();
     if (!trimmedName) {
       return res.status(400).json({ error: "League name is required" });
@@ -879,7 +906,21 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
       memberLimit = n;
     }
 
-    const duration = Number(durationDays);
+    let totalMatchups = null;
+    if (
+      matchupCount !== undefined &&
+      matchupCount !== null &&
+      matchupCount !== ""
+    ) {
+      const m = Number(matchupCount);
+      if (!Number.isInteger(m) || m <= 0 || m > 1000) {
+        return res
+          .status(400)
+          .json({ error: "Matchup count must be a positive integer" });
+      }
+      totalMatchups = m;
+    }
+
     let freq = (matchupFrequency || "").toUpperCase();
 
     if (freq !== "DAILY" && freq !== "WEEKLY") {
@@ -887,7 +928,7 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
     }
 
     const settings = {
-      durationDays: Number.isFinite(duration) && duration > 0 ? duration : null,
+      matchupCount: totalMatchups,
       matchupFrequency: freq,
     };
 
