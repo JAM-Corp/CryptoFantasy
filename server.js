@@ -230,6 +230,102 @@ function validateSymbol(raw) {
   return s;
 }
 
+function normalizeLeagueSettings(rawSettings) {
+  if (!rawSettings) return {};
+  if (typeof rawSettings === "object") return rawSettings;
+  try {
+    return JSON.parse(rawSettings);
+  } catch {
+    return {};
+  }
+}
+
+function computeLeagueSchedule({ league, members }) {
+  const settings = normalizeLeagueSettings(league.settings);
+  const freq = (settings.matchupFrequency || "WEEKLY").toUpperCase();
+  const isDaily = freq === "DAILY";
+
+  const intervalMs = isDaily
+    ? 24 * 60 * 60 * 1000 // 1 day
+    : 7 * 24 * 60 * 60 * 1000; // 1 week
+
+  const startDate = league.created_at
+    ? new Date(league.created_at)
+    : new Date();
+
+  if (!members || members.length < 2) {
+    return [];
+  }
+
+  const players = members.map((m) => ({ id: m.id, username: m.username }));
+
+  if (players.length % 2 === 1) {
+    players.push({ id: null, username: "BYE" });
+  }
+
+  const numPlayers = players.length;
+  const baseRounds = numPlayers - 1;
+
+  let maxRounds = baseRounds;
+  const durationDays = Number(settings.durationDays);
+  if (Number.isFinite(durationDays) && durationDays > 0) {
+    const roundsByDuration = Math.floor(durationDays / (isDaily ? 1 : 7));
+    if (roundsByDuration > 0) {
+      maxRounds = Math.min(maxRounds, roundsByDuration);
+    }
+  }
+
+  let arr = players.slice();
+  const schedule = [];
+
+  for (let r = 0; r < maxRounds; r++) {
+    const roundStart = new Date(startDate.getTime() + r * intervalMs);
+    const roundEnd = new Date(roundStart.getTime() + intervalMs - 1);
+
+    const matchups = [];
+    const half = numPlayers / 2;
+
+    for (let i = 0; i < half; i++) {
+      const home = arr[i];
+      const away = arr[numPlayers - 1 - i];
+
+      const homeHasPlayer = home && home.id != null;
+      const awayHasPlayer = away && away.id != null;
+
+      if (homeHasPlayer && awayHasPlayer) {
+        matchups.push({
+          homeUserId: home.id,
+          awayUserId: away.id,
+          homeUsername: home.username,
+          awayUsername: away.username,
+        });
+      } else if (homeHasPlayer || awayHasPlayer) {
+        const bye = homeHasPlayer ? home : away;
+        matchups.push({
+          byeUserId: bye.id,
+          byeUsername: bye.username,
+        });
+      }
+    }
+
+    schedule.push({
+      roundIndex: r + 1,
+      label: isDaily ? `Day ${r + 1}` : `Week ${r + 1}`,
+      start: roundStart.toISOString(),
+      end: roundEnd.toISOString(),
+      matchups,
+    });
+
+    const fixed = arr[0];
+    const rest = arr.slice(1);
+    rest.unshift(rest.pop());
+    arr = [fixed, ...rest];
+  }
+
+  return schedule;
+}
+
+
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
   if (req.session.userId) {
@@ -570,6 +666,66 @@ app.post("/api/leagues/join", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to join league" });
   }
 });
+
+// Get generated schedule for the current active league
+app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+
+    const leagueRes = await pool.query(
+      `
+      SELECT id, name, settings, created_at
+      FROM leagues
+      WHERE id = $1
+      `,
+      [leagueId]
+    );
+
+    if (!leagueRes.rows.length) {
+      return res.status(404).json({ error: "League not found" });
+    }
+
+    const league = leagueRes.rows[0];
+
+    const membersRes = await pool.query(
+      `
+      SELECT u.id, u.username
+      FROM portfolios p
+      JOIN users u ON u.id = p.user_id
+      WHERE p.league_id = $1
+      ORDER BY u.username ASC
+      `,
+      [leagueId]
+    );
+
+    const members = membersRes.rows;
+
+    const settings = normalizeLeagueSettings(league.settings);
+    const schedule = computeLeagueSchedule({ league, members });
+    const matchupFrequencyResolved = (settings.matchupFrequency || "WEEKLY").toUpperCase();
+
+    return res.json({
+      league: {
+        id: league.id,
+        name: league.name,
+        settings,
+        created_at: league.created_at,
+      },
+      matchupFrequencyResolved,
+      memberCount: members.length,
+      members,
+      schedule,
+    });
+  } catch (e) {
+    console.error("Get league schedule error:", e);
+    return res.status(500).json({ error: "Failed to generate schedule" });
+  }
+});
+
 
 app.get("/api/leagues/mine", requireAuth, async (req, res) => {
   try {
