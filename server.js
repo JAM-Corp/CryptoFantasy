@@ -325,6 +325,308 @@ function computeLeagueSchedule({ league, members }) {
   return schedule;
 }
 
+async function getPriceAtOrBefore(symbol, asOf) {
+  if (!pool) return 0;
+
+  const asOfDate = asOf instanceof Date ? asOf : new Date(asOf);
+  if (Number.isNaN(asOfDate.getTime())) {
+    throw new Error("Invalid asOf timestamp");
+  }
+  const asOfIso = asOfDate.toISOString();
+
+  try {
+    const histRes = await pool.query(
+      `
+      SELECT price_usd
+      FROM price_points_min
+      WHERE symbol = $1
+        AND ts_min <= $2
+      ORDER BY ts_min DESC
+      LIMIT 1
+      `,
+      [symbol, asOfIso]
+    );
+
+    if (histRes.rows.length) {
+      return Number(histRes.rows[0].price_usd);
+    }
+  } catch (e) {
+    console.error("getPriceAtOrBefore historical error:", e);
+  }
+
+  try {
+    const latestRes = await pool.query(
+      `
+      SELECT price_usd
+      FROM prices_latest
+      WHERE symbol = $1
+      `,
+      [symbol]
+    );
+    if (latestRes.rows.length) {
+      return Number(latestRes.rows[0].price_usd);
+    }
+  } catch (e) {
+    console.error("getPriceAtOrBefore latest fallback error:", e);
+  }
+
+  return 0;
+}
+
+async function getPortfolioValueAtTime({ userId, leagueId, asOf }) {
+  if (!pool) {
+    const err = new Error("Database not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const asOfDate = asOf instanceof Date ? asOf : new Date(asOf);
+  if (Number.isNaN(asOfDate.getTime())) {
+    const err = new Error("Invalid asOf timestamp");
+    err.status = 400;
+    throw err;
+  }
+
+  let cash = 100000;
+  const holdings = {}; // symbol -> qty
+
+  const tradesRes = await pool.query(
+    portfolioHistoryQueries.getTrades,
+    [userId, leagueId]
+  );
+
+  const asOfMs = asOfDate.getTime();
+  const trades = tradesRes.rows.filter(
+    (t) => new Date(t.created_at).getTime() <= asOfMs
+  );
+
+  for (const trade of trades) {
+    const symbol = trade.symbol;
+    const qty = Number(trade.qty);
+    const price = Number(trade.price_usd);
+    const cost = qty * price;
+
+    if (trade.side === "BUY") {
+      cash -= cost;
+      holdings[symbol] = (holdings[symbol] || 0) + qty;
+    } else if (trade.side === "SELL") {
+      cash += cost;
+      holdings[symbol] = (holdings[symbol] || 0) - qty;
+      if (holdings[symbol] <= 0) {
+        delete holdings[symbol];
+      }
+    }
+  }
+
+  let cryptoValue = 0;
+  const prices = {};
+  const symbols = Object.keys(holdings);
+
+  for (const sym of symbols) {
+    const px = await getPriceAtOrBefore(sym, asOfDate);
+    prices[sym] = px;
+    cryptoValue += holdings[sym] * px;
+  }
+
+  const totalValue = cash + cryptoValue;
+
+  return {
+    userId,
+    leagueId,
+    asOf: asOfDate.toISOString(),
+    cash,
+    cryptoValue,
+    totalValue,
+    holdings,
+    prices,
+  };
+}
+
+async function scoreHeadToHeadMatchup({
+  leagueId,
+  round,
+  homeUserId,
+  awayUserId,
+}) {
+  const roundStart = new Date(round.start);
+  const roundEnd = new Date(round.end);
+
+  if (Number.isNaN(roundStart.getTime()) || Number.isNaN(roundEnd.getTime())) {
+    const err = new Error("Invalid round start/end");
+    err.status = 500;
+    throw err;
+  }
+
+  const now = new Date();
+  const effectiveEnd =
+    now.getTime() < roundEnd.getTime() ? now : roundEnd;
+
+  const [homeStart, homeEnd, awayStart, awayEnd] = await Promise.all([
+    getPortfolioValueAtTime({
+      userId: homeUserId,
+      leagueId,
+      asOf: roundStart,
+    }),
+    getPortfolioValueAtTime({
+      userId: homeUserId,
+      leagueId,
+      asOf: effectiveEnd,
+    }),
+    getPortfolioValueAtTime({
+      userId: awayUserId,
+      leagueId,
+      asOf: roundStart,
+    }),
+    getPortfolioValueAtTime({
+      userId: awayUserId,
+      leagueId,
+      asOf: effectiveEnd,
+    }),
+  ]);
+
+  const homeProfit = homeEnd.totalValue - homeStart.totalValue;
+  const awayProfit = awayEnd.totalValue - awayStart.totalValue;
+
+  const EPS = 0.0001;
+  const diff = homeProfit - awayProfit;
+
+  let winnerUserId = null;
+  let result = "TIE";
+
+  if (Math.abs(diff) > EPS) {
+    if (diff > 0) {
+      winnerUserId = homeUserId;
+      result = "HOME_WIN";
+    } else {
+      winnerUserId = awayUserId;
+      result = "AWAY_WIN";
+    }
+  }
+
+  return {
+    leagueId,
+    roundIndex: round.roundIndex,
+    label: round.label,
+    start: roundStart.toISOString(),
+    end: roundEnd.toISOString(),
+    effectiveEnd: effectiveEnd.toISOString(),
+    home: {
+      userId: homeUserId,
+      startValue: homeStart.totalValue,
+      endValue: homeEnd.totalValue,
+      profit: homeProfit,
+    },
+    away: {
+      userId: awayUserId,
+      startValue: awayStart.totalValue,
+      endValue: awayEnd.totalValue,
+      profit: awayProfit,
+    },
+    winnerUserId,
+    result, // "HOME_WIN", "AWAY_WIN", or "TIE"
+  };
+}
+
+async function computeLeagueStandings({ leagueId, league, members, asOf }) {
+  const nowDate = asOf ? new Date(asOf) : new Date();
+  if (Number.isNaN(nowDate.getTime())) {
+    const err = new Error("Invalid asOf timestamp");
+    err.status = 400;
+    throw err;
+  }
+
+  const schedule = computeLeagueSchedule({ league, members });
+
+  const standingsMap = new Map();
+  for (const m of members) {
+    standingsMap.set(m.id, {
+      userId: m.id,
+      username: m.username,
+      wins: 0,
+      losses: 0,
+      ties: 0,
+      games: 0,
+      pointsFor: 0,
+      pointsAgainst: 0,
+      byes: 0,
+    });
+  }
+
+  for (const round of schedule) {
+    const roundEnd = new Date(round.end);
+    if (Number.isNaN(roundEnd.getTime())) continue;
+
+    // Only count fully finished rounds
+    if (roundEnd.getTime() > nowDate.getTime()) continue;
+
+    for (const m of round.matchups) {
+      // BYE week – track but don't change record
+      if (m.byeUserId) {
+        const byeEntry = standingsMap.get(m.byeUserId);
+        if (byeEntry) byeEntry.byes += 1;
+        continue;
+      }
+
+      const score = await scoreHeadToHeadMatchup({
+        leagueId,
+        round,
+        homeUserId: m.homeUserId,
+        awayUserId: m.awayUserId,
+      });
+
+      const homeEntry = standingsMap.get(m.homeUserId);
+      const awayEntry = standingsMap.get(m.awayUserId);
+      if (!homeEntry || !awayEntry) continue; // safety
+
+      homeEntry.games += 1;
+      awayEntry.games += 1;
+
+      const homePoints = score.home.profit;
+      const awayPoints = score.away.profit;
+
+      homeEntry.pointsFor += homePoints;
+      homeEntry.pointsAgainst += awayPoints;
+      awayEntry.pointsFor += awayPoints;
+      awayEntry.pointsAgainst += homePoints;
+
+      if (score.result === "TIE" || score.winnerUserId == null) {
+        homeEntry.ties += 1;
+        awayEntry.ties += 1;
+      } else if (score.winnerUserId === m.homeUserId) {
+        homeEntry.wins += 1;
+        awayEntry.losses += 1;
+      } else if (score.winnerUserId === m.awayUserId) {
+        awayEntry.wins += 1;
+        homeEntry.losses += 1;
+      }
+    }
+  }
+
+  const standings = Array.from(standingsMap.values()).map((e) => ({
+    ...e,
+    pointsFor: Number(e.pointsFor.toFixed(2)),
+    pointsAgainst: Number(e.pointsAgainst.toFixed(2)),
+    pointDiff: Number((e.pointsFor - e.pointsAgainst).toFixed(2)),
+  }));
+
+  standings.sort((a, b) => {
+    // primary: wins
+    if (b.wins !== a.wins) return b.wins - a.wins;
+    // secondary: point differential
+    const bDiff = b.pointDiff;
+    const aDiff = a.pointDiff;
+    if (bDiff !== aDiff) return bDiff - aDiff;
+    // tertiary: points for
+    if (b.pointsFor !== a.pointsFor) return b.pointsFor - a.pointsFor;
+    // final: username
+    return a.username.localeCompare(b.username);
+  });
+
+  return {
+    asOf: nowDate.toISOString(),
+    standings,
+  };
+}
 
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
@@ -723,6 +1025,172 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("Get league schedule error:", e);
     return res.status(500).json({ error: "Failed to generate schedule" });
+  }
+});
+
+// Get scores for a specific round in the current active league
+app.get("/api/leagues/round/:roundIndex/scores", requireAuth, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const roundIndex = Number(req.params.roundIndex);
+    if (!Number.isInteger(roundIndex) || roundIndex <= 0) {
+      return res.status(400).json({ error: "roundIndex must be a positive integer" });
+    }
+
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+
+    const leagueRes = await pool.query(
+      `
+      SELECT id, name, settings, created_at
+      FROM leagues
+      WHERE id = $1
+      `,
+      [leagueId]
+    );
+
+    if (!leagueRes.rows.length) {
+      return res.status(404).json({ error: "League not found" });
+    }
+
+    const league = leagueRes.rows[0];
+
+    const membersRes = await pool.query(
+      `
+      SELECT u.id, u.username
+      FROM portfolios p
+      JOIN users u ON u.id = p.user_id
+      WHERE p.league_id = $1
+      ORDER BY u.username ASC
+      `,
+      [leagueId]
+    );
+
+    const members = membersRes.rows;
+    const memberById = new Map(members.map((m) => [m.id, m]));
+
+    const settings = normalizeLeagueSettings(league.settings);
+    const schedule = computeLeagueSchedule({ league, members });
+
+    const round = schedule.find((r) => r.roundIndex === roundIndex);
+    if (!round) {
+      return res.status(404).json({ error: "Round not found in schedule" });
+    }
+
+    const scoredMatchups = [];
+
+    for (const m of round.matchups) {
+      if (m.byeUserId) {
+        const byeMember = memberById.get(m.byeUserId);
+        scoredMatchups.push({
+          type: "BYE",
+          byeUserId: m.byeUserId,
+          byeUsername: m.byeUsername,
+          byeDisplayName: byeMember ? byeMember.username : m.byeUsername,
+        });
+        continue;
+      }
+
+      const result = await scoreHeadToHeadMatchup({
+        leagueId,
+        round,
+        homeUserId: m.homeUserId,
+        awayUserId: m.awayUserId,
+      });
+
+      const homeMember = memberById.get(m.homeUserId);
+      const awayMember = memberById.get(m.awayUserId);
+
+      scoredMatchups.push({
+        type: "HEAD_TO_HEAD",
+        homeUserId: m.homeUserId,
+        awayUserId: m.awayUserId,
+        homeUsername: m.homeUsername,
+        awayUsername: m.awayUsername,
+        homeDisplayName: homeMember ? homeMember.username : m.homeUsername,
+        awayDisplayName: awayMember ? awayMember.username : m.awayUsername,
+        score: result,
+      });
+    }
+
+    return res.json({
+      league: {
+        id: league.id,
+        name: league.name,
+        settings,
+        created_at: league.created_at,
+      },
+      round: {
+        roundIndex: round.roundIndex,
+        label: round.label,
+        start: round.start,
+        end: round.end,
+      },
+      matchups: scoredMatchups,
+    });
+  } catch (e) {
+    console.error("Get round scores error:", e);
+    return res.status(500).json({ error: "Failed to compute round scores" });
+  }
+});
+
+app.get("/api/leagues/standings", requireAuth, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+
+    const leagueRes = await pool.query(
+      `
+      SELECT id, name, settings, created_at
+      FROM leagues
+      WHERE id = $1
+      `,
+      [leagueId]
+    );
+
+    if (!leagueRes.rows.length) {
+      return res.status(404).json({ error: "League not found" });
+    }
+
+    const league = leagueRes.rows[0];
+
+    const membersRes = await pool.query(
+      `
+      SELECT u.id, u.username
+      FROM portfolios p
+      JOIN users u ON u.id = p.user_id
+      WHERE p.league_id = $1
+      ORDER BY u.username ASC
+      `,
+      [leagueId]
+    );
+
+    const members = membersRes.rows;
+
+    const { asOf, standings } = await computeLeagueStandings({
+      leagueId,
+      league,
+      members,
+    });
+
+    return res.json({
+      league: {
+        id: league.id,
+        name: league.name,
+        settings: normalizeLeagueSettings(league.settings),
+        created_at: league.created_at,
+      },
+      asOf,
+      standings,
+    });
+  } catch (e) {
+    console.error("Get league standings error:", e);
+    return res.status(500).json({ error: "Failed to compute standings" });
   }
 });
 
