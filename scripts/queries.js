@@ -143,13 +143,19 @@ export const leagueQueries = {
   `,
 
   getActiveLeagues: `
-    SELECT l.id, l.name, l.join_code, l.member_limit,
-           COUNT(DISTINCT p.user_id) AS member_count
+    SELECT l.id,
+          l.name,
+          l.join_code,
+          l.member_limit,
+          l.status,
+          l.winner_user_id,
+          l.completed_at,
+          COUNT(DISTINCT p.user_id) AS member_count
     FROM leagues l
     LEFT JOIN portfolios p ON p.league_id = l.id
     WHERE l.owner_user_id = $1
-       OR p.user_id = $1
-    GROUP BY l.id, l.name, l.join_code, l.member_limit
+      OR p.user_id = $1
+    GROUP BY l.id, l.name, l.join_code, l.member_limit, l.status, l.winner_user_id, l.completed_at
     ORDER BY l.created_at ASC
   `,
 
@@ -192,7 +198,7 @@ export const leagueQueries = {
   `,
 
   getLeagueByJoinCode: `
-    SELECT id, name, member_limit
+    SELECT id, name, member_limit, status
     FROM leagues
     WHERE join_code = $1
   `,
@@ -219,6 +225,15 @@ export const leagueQueries = {
     INSERT INTO portfolios (user_id, league_id)
     VALUES ($1, $2)
     ON CONFLICT (user_id, league_id) DO NOTHING
+  `,
+
+  finalizeLeague: `
+  UPDATE leagues
+  SET status = 'COMPLETED',
+      completed_at = now(),
+      winner_user_id = $2
+  WHERE id = $1
+  RETURNING id, name, status, completed_at, winner_user_id
   `,
 };
 

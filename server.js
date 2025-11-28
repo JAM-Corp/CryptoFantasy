@@ -24,6 +24,9 @@ app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 8080;
 let CG_API_KEY = process.env.CG_API_KEY || null;
+const FAST_SCHEDULE =
+  process.env.FAST_SCHEDULE === "1" ||
+  process.env.FAST_SCHEDULE === "true";
 
 function normalizeCoinId(raw) {
   return String(raw || "").trim().toLowerCase();
@@ -141,6 +144,12 @@ async function joinLeagueForUserByCode(userId, rawCode) {
 
   const league = rows[0];
 
+  if (league.status === "COMPLETED") {
+    const err = new Error("League is already completed");
+    err.status = 409;
+    throw err;
+  }
+
   if (league.member_limit != null) {
     const countRes = await pool.query(leagueQueries.countLeagueMembers, [league.id]);
     const memberCount = Number(countRes.rows[0].member_count || 0);
@@ -246,8 +255,8 @@ function computeLeagueSchedule({ league, members }) {
   const isDaily = freq === "DAILY";
 
   const intervalMs = isDaily
-    ? 24 * 60 * 60 * 1000 // 1 day
-    : 7 * 24 * 60 * 60 * 1000; // 1 week
+    ? (FAST_SCHEDULE ? 60 * 1000 : 24 * 60 * 60 * 1000) // 1 minute or 1 day
+    : (FAST_SCHEDULE ? 60 * 1000 : 7 * 24 * 60 * 60 * 1000); // 1 minute or 1 week
 
   const startDate = league.created_at
     ? new Date(league.created_at)
@@ -980,7 +989,7 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
 
     const leagueRes = await pool.query(
       `
-      SELECT id, name, settings, created_at
+      SELECT id, name, settings, created_at, status, winner_user_id, completed_at
       FROM leagues
       WHERE id = $1
       `,
@@ -1044,7 +1053,7 @@ app.get("/api/leagues/round/:roundIndex/scores", requireAuth, async (req, res) =
 
     const leagueRes = await pool.query(
       `
-      SELECT id, name, settings, created_at
+      SELECT id, name, settings, created_at, status, winner_user_id, completed_at
       FROM leagues
       WHERE id = $1
       `,
@@ -1146,7 +1155,7 @@ app.get("/api/leagues/standings", requireAuth, async (req, res) => {
 
     const leagueRes = await pool.query(
       `
-      SELECT id, name, settings, created_at
+      SELECT id, name, settings, created_at, status, winner_user_id, completed_at
       FROM leagues
       WHERE id = $1
       `,
@@ -1178,19 +1187,177 @@ app.get("/api/leagues/standings", requireAuth, async (req, res) => {
       members,
     });
 
+    let champion = null;
+    if (league.status === "COMPLETED" && standings.length > 0) {
+      const top = standings[0];
+
+      champion = {
+        userId: top.userId,
+        username: top.username,
+        wins: top.wins,
+        losses: top.losses,
+        ties: top.ties,
+        games: top.games,
+        pointsFor: top.pointsFor,
+        pointsAgainst: top.pointsAgainst,
+        pointDiff: top.pointDiff,
+        byes: top.byes,
+      };
+    }
+
     return res.json({
       league: {
         id: league.id,
         name: league.name,
         settings: normalizeLeagueSettings(league.settings),
         created_at: league.created_at,
+        status: league.status,
+        winner_user_id: league.winner_user_id,
+        completed_at: league.completed_at,
       },
       asOf,
       standings,
+      champion, // null unless league is completed
     });
   } catch (e) {
     console.error("Get league standings error:", e);
     return res.status(500).json({ error: "Failed to compute standings" });
+  }
+});
+
+app.get("/api/leagues/leaderboard", requireAuth, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+
+    const { rows } = await pool.query(leagueQueries.getLeaderboard, [leagueId]);
+
+    res.json({
+      leagueId,
+      leaderboard: rows,
+    });
+  } catch (e) {
+    console.error("Get leaderboard error:", e);
+    res.status(500).json({ error: "Failed to load leaderboard" });
+  }
+});
+
+app.post("/api/leagues/complete", requireAuth, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const bodyLeagueId = req.body && req.body.leagueId ? Number(req.body.leagueId) : null;
+    const leagueId = bodyLeagueId || await getOrCreateCurrentLeagueId(req);
+
+    const leagueRes = await pool.query(
+      `
+      SELECT id, name, owner_user_id, settings, created_at, status, winner_user_id, completed_at
+      FROM leagues
+      WHERE id = $1
+      `,
+      [leagueId]
+    );
+
+    if (!leagueRes.rows.length) {
+      return res.status(404).json({ error: "League not found" });
+    }
+
+    const league = leagueRes.rows[0];
+
+    if (league.owner_user_id !== req.session.userId) {
+      return res.status(403).json({ error: "Only the league owner can complete this league" });
+    }
+
+    if (league.status === "COMPLETED") {
+      return res.status(400).json({
+        error: "League is already completed",
+        league: {
+          id: league.id,
+          name: league.name,
+          status: league.status,
+          completed_at: league.completed_at,
+          winner_user_id: league.winner_user_id,
+        },
+      });
+    }
+
+    const membersRes = await pool.query(
+      `
+      SELECT u.id, u.username
+      FROM portfolios p
+      JOIN users u ON u.id = p.user_id
+      WHERE p.league_id = $1
+      ORDER BY u.username ASC
+      `,
+      [leagueId]
+    );
+
+    const members = membersRes.rows;
+    if (!members.length) {
+      return res.status(400).json({ error: "League has no members" });
+    }
+
+    const schedule = computeLeagueSchedule({ league, members });
+    if (!schedule.length) {
+      return res.status(400).json({ error: "League has no schedule to complete" });
+    }
+
+    const lastRound = schedule[schedule.length - 1];
+    const lastEnd = new Date(lastRound.end);
+    const now = new Date();
+
+    if (Number.isNaN(lastEnd.getTime())) {
+      return res.status(500).json({ error: "Invalid last round end time" });
+    }
+
+    if (lastEnd.getTime() > now.getTime()) {
+      return res.status(400).json({
+        error: "Season is not finished yet",
+        lastRoundEndsAt: lastEnd.toISOString(),
+      });
+    }
+
+    const { asOf, standings } = await computeLeagueStandings({
+      leagueId,
+      league,
+      members,
+      asOf: now.toISOString(),
+    });
+
+    if (!standings.length) {
+      return res.status(400).json({ error: "No standings available to finalize" });
+    }
+
+    const champion = standings[0];
+
+    const finalizeRes = await pool.query(leagueQueries.finalizeLeague, [
+      leagueId,
+      champion.userId,
+    ]);
+
+    const finalized = finalizeRes.rows[0];
+
+    return res.json({
+      success: true,
+      league: {
+        id: finalized.id,
+        name: finalized.name,
+        status: finalized.status,
+        completed_at: finalized.completed_at,
+        winner_user_id: finalized.winner_user_id,
+        winner_username: champion.username,
+      },
+      asOf,
+      finalStandings: standings,
+    });
+  } catch (e) {
+    console.error("Complete league error:", e);
+    return res.status(500).json({ error: "Failed to complete league" });
   }
 });
 
