@@ -280,29 +280,6 @@
         color: #e6eef8;
       }
 
-      .progress-indicator {
-        width: 100%;
-        height: 4px;
-        background: #374151;
-        border-radius: 2px;
-        margin-bottom: 30px;
-        overflow: hidden;
-      }
-
-      .progress-bar {
-        height: 100%;
-        background: linear-gradient(90deg, #7c3aed, #10b981);
-        width: 25%;
-        border-radius: 2px;
-      }
-
-      .step-text {
-        font-size: 12px;
-        color: #9ca3af;
-        text-align: center;
-        margin-bottom: 20px;
-      }
-
       .modal-title {
         font-size: 24px;
         font-weight: 600;
@@ -469,11 +446,6 @@
       <div class="modal" onclick="event.stopPropagation()">
         <button class="modal-close" onclick="closeCreateModal()">×</button>
 
-        <div class="progress-indicator">
-          <div class="progress-bar"></div>
-        </div>
-        <div class="step-text">STEP 1 OF 4</div>
-
         <h2 class="modal-title">Create League</h2>
         <p class="modal-subtitle">Set up your fantasy crypto league</p>
 
@@ -485,7 +457,7 @@
               type="text"
               id="leagueName"
               class="form-input"
-              placeholder="e.g. Crypto Degens League"
+              placeholder="e.g. My Crypto League"
               maxlength="64"
               required
             />
@@ -573,11 +545,6 @@
     >
       <div class="modal" onclick="event.stopPropagation()">
         <button class="modal-close" onclick="closeJoinModal()">×</button>
-
-        <div class="progress-indicator">
-          <div class="progress-bar"></div>
-        </div>
-        <div class="step-text">STEP 1 OF 4</div>
 
         <h2 class="modal-title">Join League</h2>
         <p class="modal-subtitle">Enter the league code to join</p>

@@ -255,8 +255,8 @@ function computeLeagueSchedule({ league, members }) {
   const isDaily = freq === "DAILY";
 
   const intervalMs = isDaily
-    ? (FAST_SCHEDULE ? 60 * 1000 : 24 * 60 * 60 * 1000) // 1 minute or 1 day
-    : (FAST_SCHEDULE ? 60 * 1000 : 7 * 24 * 60 * 60 * 1000); // 1 minute or 1 week
+    ? (FAST_SCHEDULE ? 5 * 60 * 1000 : 24 * 60 * 60 * 1000) // 5 min or 1 day
+    : (FAST_SCHEDULE ? 5 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000);
 
   const startDate = league.created_at
     ? new Date(league.created_at)
@@ -518,13 +518,15 @@ async function scoreHeadToHeadMatchup({
   let winnerUserId = null;
   let result = "TIE";
 
-  if (Math.abs(diff) > EPS) {
-    if (diff > 0) {
-      winnerUserId = homeUserId;
-      result = "HOME_WIN";
+  if (Math.abs(diff) <= EPS) {
+    // tie-breaker: higher end-of-round total value wins
+    if (Math.abs(homeEnd.totalValue - awayEnd.totalValue) > EPS) {
+      winnerUserId = homeEnd.totalValue > awayEnd.totalValue
+        ? homeUserId
+        : awayUserId;
+      result = winnerUserId === homeUserId ? "HOME_WIN" : "AWAY_WIN";
     } else {
-      winnerUserId = awayUserId;
-      result = "AWAY_WIN";
+      result = "TIE";
     }
   }
 
