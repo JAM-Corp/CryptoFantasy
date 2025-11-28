@@ -313,24 +313,13 @@ function computeLeagueSchedule({ league, members }) {
     arr = [fixed, ...rest];
   }
 
-  let totalRounds = null;
-
+  let totalRounds;
   const matchupCountSetting = Number(settings.matchupCount);
-  const hasMatchupCount =
-    Number.isInteger(matchupCountSetting) && matchupCountSetting > 0;
 
-  if (hasMatchupCount) {
-    totalRounds = matchupCountSetting;
+  if (Number.isInteger(matchupCountSetting) && matchupCountSetting > 0) {
+    totalRounds = Math.min(matchupCountSetting, 1000);
   } else {
-    let maxRounds = baseRounds;
-    const durationDays = Number(settings.durationDays);
-    if (Number.isFinite(durationDays) && durationDays > 0) {
-      const roundsByDuration = Math.floor(durationDays / (isDaily ? 1 : 7));
-      if (roundsByDuration > 0) {
-        maxRounds = Math.min(baseRounds, roundsByDuration);
-      }
-    }
-    totalRounds = maxRounds;
+    totalRounds = baseRounds;
   }
 
   if (!Number.isInteger(totalRounds) || totalRounds <= 0) {
@@ -345,7 +334,6 @@ function computeLeagueSchedule({ league, members }) {
     const roundEnd = new Date(roundStart.getTime() + intervalMs - 1);
 
     const templateMatchups = baseRoundMatchups[patternIndex];
-
     const matchups = templateMatchups.map((m) => ({ ...m }));
 
     schedule.push({
@@ -359,6 +347,7 @@ function computeLeagueSchedule({ league, members }) {
 
   return schedule;
 }
+
 
 
 async function getPriceAtOrBefore(symbol, asOf) {

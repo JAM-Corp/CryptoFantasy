@@ -478,44 +478,48 @@
         <p class="modal-subtitle">Set up your fantasy crypto league</p>
 
         <form id="createLeagueForm" onsubmit="handleCreateLeague(event)">
-        <div class="form-group">
-          <label class="form-label" for="matchupCount">Number of Matchups</label>
-          <input
-            type="number"
-            id="matchupCount"
-            class="form-input"
-            placeholder="e.g. 6"
-            min="1"
-            max="1000"
-            required
-          />
-        </div>
+          <!-- League Name -->
+          <div class="form-group">
+            <label class="form-label" for="leagueName">League Name</label>
+            <input
+              type="text"
+              id="leagueName"
+              class="form-input"
+              placeholder="e.g. Crypto Degens League"
+              maxlength="64"
+              required
+            />
+          </div>
 
+          <!-- Number of Matchups -->
+          <div class="form-group">
+            <label class="form-label" for="matchupCount">Number of Matchups</label>
+            <input
+              type="number"
+              id="matchupCount"
+              class="form-input"
+              placeholder="e.g. 6"
+              min="1"
+              max="1000"
+              required
+            />
+          </div>
+
+          <!-- Number of Members -->
           <div class="form-group">
             <label class="form-label" for="memberCount">Number of Members</label>
             <input
               type="number"
               id="memberCount"
               class="form-input"
-              placeholder="4-32 players"
+              placeholder="4–32 players"
               min="2"
               max="32"
               required
             />
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="leagueDuration">League Duration (days)</label>
-            <input
-              type="number"
-              id="leagueDuration"
-              class="form-input"
-              placeholder="e.g. 30"
-              min="1"
-              required
-            />
-          </div>
-
+          <!-- Matchup Frequency -->
           <div class="form-group">
             <span class="form-label">Matchup Frequency</span>
             <div class="radio-row">
