@@ -808,10 +808,13 @@
         }
       }
 
-      // Handle button clicks to set side
-      document.querySelectorAll(".btn-buy, .btn-sell").forEach((btn) => {
+      // Handle button clicks to set side (only main BUY/SELL buttons)
+      document.querySelectorAll("button[data-side]").forEach((btn) => {
         btn.addEventListener("click", (e) => {
-          selectedSide = e.currentTarget.dataset.side;
+          const side = e.currentTarget.dataset.side;
+          if (side === "BUY" || side === "SELL") {
+            selectedSide = side;
+          }
         });
       });
 

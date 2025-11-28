@@ -39,26 +39,9 @@ export default function makeTradeRoutes({
           );
           holdings = hrows;
 
-          let symbolsForUI = COIN_WHITELIST;
-          try {
-            const { rows } = await pool.query(
-              "select coin_symbols from leagues where id = $1",
-              [leagueId]
-            );
-            if (
-              rows.length &&
-              Array.isArray(rows[0].coin_symbols) &&
-              rows[0].coin_symbols.length
-            ) {
-              symbolsForUI = rows[0].coin_symbols.map((s) =>
-                String(s).toUpperCase()
-              );
-            }
-          } catch (e) {
-            console.error("Failed to load coin_symbols for league in tradeGet:", e);
-          }
+          // env whitelist now
+          const symbolsForUI = COIN_WHITELIST;
 
-          // Build coin list with latest prices for this league's symbols
           const { rows } = await pool.query(
             "select symbol, price_usd from prices_latest where symbol = any($1)",
             [symbolsForUI]
@@ -71,7 +54,7 @@ export default function makeTradeRoutes({
             price_usd: priceMap[s] ?? null,
           }));
         } else {
-          // No DB configured: fallback to global whitelist with null prices
+          // No DB configured
           coins = COIN_WHITELIST.map((s) => ({ symbol: s, price_usd: null }));
         }
 

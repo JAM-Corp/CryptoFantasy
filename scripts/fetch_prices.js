@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 const _fetch = globalThis.fetch;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// ---- small helper ----
 function normalizeId(raw) {
   return String(raw || "").trim().toLowerCase();
 }
@@ -61,80 +60,29 @@ const CG_VS = (process.env.CG_VS || "usd").trim();
 const pool = new Pool(dbConfig);
 
 // ----------------------
-// HELPER: ENV FALLBACK
+// HELPER: ENV-ONLY IDS
 // ----------------------
 function getIdsFromEnv() {
-  const ids = (process.env.CG_IDS || "bitcoin,ethereum,solana")
+  const raw =
+    process.env.COIN_WHITELIST ||
+    process.env.CG_IDS ||
+    "bitcoin,ethereum,solana";
+
+  const ids = raw
     .split(",")
     .map((s) => normalizeId(s))
     .filter(Boolean);
 
-  if (ids.length === 0) {
-    console.warn("No CoinGecko IDs found in CG_IDS.");
+  if (!ids.length) {
+    console.warn("No CoinGecko IDs found in env (COIN_WHITELIST/CG_IDS).");
   } else {
     console.log(
-      `Using ${ids.length} CoinGecko IDs from CG_IDS fallback: ${ids.join(", ")}`
+      `Using ${ids.length} CoinGecko IDs from env: ${ids.join(", ")}`
     );
   }
 
-  // canonical: { id, symbol } where both are CoinGecko IDs, lowercase
-  return ids.map((id) => ({
-    id,
-    symbol: id,
-  }));
-}
-
-// ----------------------
-// HELPER: LOAD IDS FROM DB
-// ----------------------
-// Pull union of:
-//   - all league coin_symbols (text[] of CG IDs)
-//   - any coingecko_id from the legacy coins table
-async function loadIdsFromDb() {
-  try {
-    const { rows } = await pool.query(
-      `
-      WITH league_ids AS (
-        SELECT DISTINCT unnest(coin_symbols) AS id
-        FROM leagues
-        WHERE coin_symbols IS NOT NULL
-          AND array_length(coin_symbols, 1) > 0
-      ),
-      coin_ids AS (
-        SELECT DISTINCT coingecko_id AS id
-        FROM coins
-        WHERE coingecko_id IS NOT NULL
-          AND coingecko_id <> ''
-      )
-      SELECT DISTINCT lower(id) AS id
-      FROM (
-        SELECT id FROM league_ids
-        UNION
-        SELECT id FROM coin_ids
-      ) all_ids
-    `
-    );
-
-    if (rows.length > 0) {
-      const ids = rows.map((r) => normalizeId(r.id));
-      console.log(
-        `Loaded ${ids.length} CoinGecko IDs from leagues/coins:`,
-        ids.join(", ")
-      );
-      return ids.map((id) => ({ id, symbol: id }));
-    } else {
-      console.warn(
-        "No CoinGecko IDs found in leagues/coins; falling back to CG_IDS."
-      );
-      return getIdsFromEnv();
-    }
-  } catch (err) {
-    console.error(
-      "Error loading CoinGecko IDs from DB; falling back to CG_IDS:",
-      err.message || err
-    );
-    return getIdsFromEnv();
-  }
+  // lowercase CoinGecko IDs
+  return ids;
 }
 
 // ----------------------
@@ -163,29 +111,20 @@ async function fetchBatch(ids) {
 // SINGLE TICK
 // ----------------------
 async function runTickOnce() {
-  const coins = await loadIdsFromDb();
+  // 🔒 Single source of truth: env
+  const ids = getIdsFromEnv();
 
-  if (!coins || coins.length === 0) {
+  if (!ids || ids.length === 0) {
     console.warn("No coin IDs configured; skipping tick.");
-    return;
-  }
-
-  const ids = coins
-    .map((c) => (typeof c === "string" ? c : c.id))
-    .map((id) => normalizeId(id))
-    .filter(Boolean);
-
-  if (ids.length === 0) {
-    console.warn("No valid CoinGecko IDs after normalization; skipping tick.");
     return;
   }
 
   const data = await fetchBatch(ids);
   const tsMinSql = "date_trunc('minute', now())";
 
-  for (const coin of coins) {
-    const id = normalizeId(typeof coin === "string" ? coin : coin.id);
-    const symbol = id; // canonical: lowercase CoinGecko id
+  for (const rawId of ids) {
+    const id = normalizeId(rawId);
+    const symbol = id; // lowercase CoinGecko id
 
     const price = data?.[id]?.[CG_VS];
     if (typeof price !== "number" || !Number.isFinite(price)) {
@@ -212,7 +151,7 @@ async function runTickOnce() {
   }
 
   console.log(
-    `Tick complete for ${coins.length} coins at ${new Date().toISOString()}`
+    `Tick complete for ${ids.length} coins at ${new Date().toISOString()}`
   );
 }
 

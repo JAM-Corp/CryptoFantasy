@@ -25,55 +25,15 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 8080;
 let CG_API_KEY = process.env.CG_API_KEY || null;
 
-const STABLE_SYMBOLS = new Set(["usdt", "usdc", "dai", "tusd", "fdusd", "usdd"]);
-const BAD_WORDS = ["wrapped", "staked", "beacon", "wormhole", "pegged", "synthetic", "heloc"];
-
 function normalizeCoinId(raw) {
   return String(raw || "").trim().toLowerCase();
 }
 
-function filterTopCoinsForApp(data, limit = 10) {
-  const filtered = (data || []).filter((c) => {
-    const sym = (c.symbol || "").toLowerCase();
-    const id = (c.id || "").toLowerCase();
-    const name = (c.name || "").toLowerCase();
-
-    if (STABLE_SYMBOLS.has(sym)) return false;
-    if (sym.startsWith("w") || sym.startsWith("figr_")) return false;
-    if (BAD_WORDS.some((w) => id.includes(w) || name.includes(w))) return false;
-    return true;
-  });
-
-  return filtered.slice(0, limit);
-}
-
 async function getDefaultLeagueCoinSymbols() {
-  try {
-    const url =
-      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false";
-
-    const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
-    const response = await fetch(url, { headers });
-
-    if (!response.ok) {
-      throw new Error(`CoinGecko ${response.status}`);
-    }
-
-    const data = await response.json();
-    const topCoins = filterTopCoinsForApp(data, 10);
-    if (!topCoins.length) throw new Error("No coins after filtering");
-
-    // IMPORTANT: store CoinGecko IDs (lowercase) instead of tickers
-    return topCoins
-      .map((c) => normalizeCoinId(c.id))
-      .filter(Boolean);
-  } catch (err) {
-    console.error(
-      "getDefaultLeagueCoinSymbols error; falling back to global COIN_WHITELIST:",
-      err
-    );
-    return COIN_WHITELIST;
-  }
+  // No more dynamic pulling for simplicity and to meet rate limits.
+  // Every league just uses the env-driven whitelist.
+  // COIN_WHITELIST is already normalized to lowercase IDs.
+  return [...COIN_WHITELIST];
 }
 
 const cgChartCache = new Map();
@@ -148,18 +108,6 @@ function requireAuth(req, res, next) {
 }
 
 // Helpers
-async function getLeagueCoinSymbols(leagueId) {
-  if (!pool || !leagueId) return null;
-  const { rows } = await pool.query(
-    "select coin_symbols from leagues where id = $1",
-    [leagueId]
-  );
-  if (!rows.length) return null;
-  const arr = rows[0].coin_symbols;
-  if (!Array.isArray(arr) || !arr.length) return null;
-
-  return arr.map((s) => normalizeCoinId(s));
-}
 
 function generateJoinCode(length = 6) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -276,17 +224,11 @@ async function getCurrentPrice(coinId) {
   return rows[0]?.price_usd ?? null;
 }
 
-function validateSymbol(raw, allowedSymbols) {
-  const s = normalizeCoinId(raw); 
-  const baseList =
-    Array.isArray(allowedSymbols) && allowedSymbols.length
-      ? allowedSymbols.map((x) => normalizeCoinId(x))
-      : COIN_WHITELIST;
-
-  if (!s || !baseList.includes(s)) return null;
+function validateSymbol(raw) {
+  const s = normalizeCoinId(raw);
+  if (!s || !COIN_WHITELIST.includes(s)) return null;
   return s;
 }
-
 
 // Redirect root to login if not authenticated, otherwise to dashboard
 app.get("/", (req, res) => {
@@ -708,11 +650,20 @@ app.post("/api/leagues/active", requireAuth, async (req, res) => {
   }
 });
 
-// Get current coin data (top filtered list)
+// Get current coin data for the app's configured (env-based) list
 app.get("/api/cg/coins", async (req, res) => {
   try {
+    if (!COIN_WHITELIST.length) {
+      return res.json([]);
+    }
+
+    const idsParam = COIN_WHITELIST.join(",");
+
     const url =
-      "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=20&page=1&sparkline=false";
+      `https://api.coingecko.com/api/v3/coins/markets` +
+      `?vs_currency=usd` +
+      `&ids=${encodeURIComponent(idsParam)}` +
+      `&order=market_cap_desc&per_page=250&page=1&sparkline=false`;
 
     const headers = CG_API_KEY ? { "x-cg-demo-api-key": CG_API_KEY } : {};
     const response = await fetch(url, { headers });
@@ -720,11 +671,10 @@ app.get("/api/cg/coins", async (req, res) => {
     if (!response.ok) throw new Error(`CoinGecko ${response.status}`);
 
     const data = await response.json();
-    const topCoins = filterTopCoinsForApp(data, 10);
 
-    const payload = topCoins.map((c) => ({
-      id: c.id,
-      symbol: c.symbol,
+    const payload = data.map((c) => ({
+      id: c.id,          // CoinGecko ID (e.g. "bitcoin")
+      symbol: c.id,      // we treat ID as our symbol internally
       name: c.name,
       current_price: c.current_price,
       market_cap_rank: c.market_cap_rank,
@@ -978,21 +928,16 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     const leagueId = await getOrCreateCurrentLeagueId(req);
     await ensurePortfolio(req.session.userId, leagueId);
 
-    // Load this league's coin whitelist (fallback to global if null)
-    let allowedSymbols = null;
-    try {
-      allowedSymbols = await getLeagueCoinSymbols(leagueId);
-    } catch (e) {
-      console.error("Failed to load coin_symbols for league", leagueId, e);
-    }
+    // Treat "symbol" from the client as CoinGecko ID,
+    // and validate only against the global env whitelist.
+    const coinId = validateSymbol(symbol);
 
-    // Treat "symbol" from the client as CoinGecko ID
-    const coinId = validateSymbol(symbol, allowedSymbols);
-
-    if (!coinId)
+    if (!coinId) {
       return res
         .status(400)
-        .json({ error: "coin not allowed for this league" });
+        .json({ error: "coin not allowed (not in global whitelist)" });
+    }
+
     if (sideU !== "BUY" && sideU !== "SELL")
       return res.status(400).json({ error: "side must be BUY or SELL" });
     if (!Number.isFinite(qty) || qty <= 0)
