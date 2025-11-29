@@ -518,14 +518,21 @@ async function scoreHeadToHeadMatchup({
   let winnerUserId = null;
   let result = "TIE";
 
-  if (Math.abs(diff) <= EPS) {
-    // tie-breaker: higher end-of-round total value wins
-    if (Math.abs(homeEnd.totalValue - awayEnd.totalValue) > EPS) {
-      winnerUserId = homeEnd.totalValue > awayEnd.totalValue
-        ? homeUserId
-        : awayUserId;
+  if (Math.abs(diff) > EPS) {
+    if (diff > 0) {
+      winnerUserId = homeUserId;
+      result = "HOME_WIN";
+    } else {
+      winnerUserId = awayUserId;
+      result = "AWAY_WIN";
+    }
+  } else {
+    const valueDiff = homeEnd.totalValue - awayEnd.totalValue;
+    if (Math.abs(valueDiff) > EPS) {
+      winnerUserId = valueDiff > 0 ? homeUserId : awayUserId;
       result = winnerUserId === homeUserId ? "HOME_WIN" : "AWAY_WIN";
     } else {
+      winnerUserId = null;
       result = "TIE";
     }
   }
