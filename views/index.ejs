@@ -1,232 +1,628 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CryptoFantasy</title>
-    <style>
-      * {
-        margin: 0;
-        padding: 0;
-        box-sizing: border-box;
-      }
 
-      body {
-        font-family: system-ui, -apple-system, sans-serif;
-        background: #0f1724;
-        color: #e6eef8;
-        overflow-x: hidden;
-      }
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CryptoFantasy</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
 
-      /* Top Navigation Bar */
-      .topbar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 60px;
-        background: rgba(15, 23, 36, 0.95);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0 20px;
-        z-index: 100;
-      }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f1724;
+      color: #e6eef8;
+      overflow-x: hidden;
+    }
 
-      .topbar h1 {
-        font-size: 24px;
-        color: #7c3aed;
-      }
+    /* Top Navigation Bar */
+    .topbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 60px;
+      background: rgba(15, 23, 36, 0.95);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 20px;
+      z-index: 100;
+    }
 
-      .user-info {
-        display: flex;
-        align-items: center;
-        gap: 15px;
-      }
+    .topbar h1 {
+      font-size: 24px;
+      color: #7c3aed;
+    }
 
-      .user-info span {
-        font-size: 14px;
-        color: #e6eef8;
-      }
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+    }
 
-      /* Sidebar */
-      .sidebar {
-        position: fixed;
-        top: 60px;
-        left: 0;
-        width: 250px;
-        height: calc(100vh - 60px);
-        background: rgba(255, 255, 255, 0.05);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-        padding: 20px 0;
-      }
+    .user-info span {
+      font-size: 14px;
+      color: #e6eef8;
+    }
 
-      .sidebar-btn {
-        width: 100%;
-        background: transparent;
-        color: #e6eef8;
-        padding: 15px 20px;
-        border: none;
-        text-align: left;
-        cursor: pointer;
-        font-size: 16px;
-        transition: all 0.3s ease;
-        border-left: 3px solid transparent;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
+    .welcome-section {
+      max-width: 1200px;
+    }
 
-      .sidebar-btn:hover {
-        background: rgba(124, 58, 237, 0.2);
-        border-left-color: #7c3aed;
-      }
+    .welcome-section h2 {
+      font-size: 32px;
+      margin-bottom: 20px;
+      color: #e6eef8;
+    }
 
-      .sidebar-btn.active {
-        background: rgba(124, 58, 237, 0.3);
-        border-left-color: #7c3aed;
-        color: #7c3aed;
-      }
+    .welcome-section p {
+      font-size: 18px;
+      color: #9ca3af;
+      line-height: 1.6;
+    }
 
-      .sidebar-btn svg {
-        width: 20px;
-        height: 20px;
-        fill: #9ca3af;
-        transition: fill 0.3s ease;
-      }
+    /* Sidebar */
+    .sidebar {
+      position: fixed;
+      top: 60px;
+      left: 0;
+      width: 250px;
+      height: calc(100vh - 60px);
+      background: rgba(255, 255, 255, 0.05);
+      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 20px 0;
+    }
 
-      .sidebar-btn:hover svg,
-      .sidebar-btn.active svg {
-        fill: #7c3aed;
-      }
+    .sidebar-btn {
+      width: 100%;
+      background: transparent;
+      color: #e6eef8;
+      padding: 15px 20px;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.3s ease;
+      border-left: 3px solid transparent;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-      .sidebar-footer {
-        position: absolute;
-        bottom: 0;
-        width: 100%;
-        padding: 20px 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-      }
+    .sidebar-btn:hover {
+      background: rgba(124, 58, 237, 0.2);
+      border-left-color: #7c3aed;
+    }
 
-      .logout-btn {
-        width: 100%;
-        background: transparent;
-        color: #ef4444;
-        padding: 15px 20px;
-        border: none;
-        text-align: left;
-        cursor: pointer;
-        font-size: 16px;
-        transition: all 0.3s ease;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-      }
+    .sidebar-btn.active {
+      background: rgba(124, 58, 237, 0.3);
+      border-left-color: #7c3aed;
+      color: #7c3aed;
+    }
 
-      .logout-btn:hover {
-        background: rgba(239, 68, 68, 0.1);
-      }
+    .sidebar-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: #9ca3af;
+      transition: fill 0.3s ease;
+    }
 
-      .logout-btn svg {
-        width: 20px;
-        height: 20px;
-        fill: #ef4444;
-      }
+    .sidebar-btn:hover svg,
+    .sidebar-btn.active svg {
+      fill: #7c3aed;
+    }
 
-      /* Main Content Area */
-      .main-content {
-        margin-left: 250px;
-        margin-top: 60px;
-        padding: 40px;
-        min-height: calc(100vh - 60px);
-      }
+    .sidebar-footer {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      padding: 20px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
 
-      .btn {
-        background: #7c3aed;
-        color: white;
-        padding: 10px 20px;
-        border: none;
-        border-radius: 6px;
-        cursor: pointer;
-        text-decoration: none;
-        display: inline-block;
-        font-size: 14px;
-        transition: background 0.3s ease;
-      }
+    .logout-btn {
+      width: 100%;
+      background: transparent;
+      color: #ef4444;
+      padding: 15px 20px;
+      border: none;
+      text-align: left;
+      cursor: pointer;
+      font-size: 16px;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
 
-      .btn:hover {
-        background: #6d28d9;
-      }
+    .logout-btn:hover {
+      background: rgba(239, 68, 68, 0.1);
+    }
 
-      .btn.secondary {
-        background: #4b5563;
-      }
+    .logout-btn svg {
+      width: 20px;
+      height: 20px;
+      fill: #ef4444;
+    }
 
-      .btn.secondary:hover {
-        background: #374151;
-      }
+    /* Main Content Area */
+    .main-content {
+      margin-left: 250px;
+      margin-top: 60px;
+      padding: 40px;
+      min-height: calc(100vh - 60px);
+    }
 
-      a {
-        color: #7c3aed;
-      }
+    a {
+      color: #7c3aed;
+    }
 
-      #guestInfo {
-        text-align: center;
-        padding: 100px 20px;
-      }
+    /* Snapshot Cards */
+    .snapshot-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: stretch;
+      gap: 16px;
+      width: 100%;
+      margin-bottom: 24px;
+      padding-bottom: 40px;
+      flex-wrap: wrap;
+    }
 
-      #guestInfo p {
-        font-size: 18px;
-        margin-bottom: 20px;
-      }
+    .snapshot-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 14px 16px;
+      transition: all 0.3s ease;
+      flex: 1 1 200px;
+    }
 
-      .welcome-section {
-        max-width: 1200px;
-      }
+    .snapshot-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(124, 58, 237, 0.3);
+    }
 
-      .welcome-section h2 {
-        font-size: 32px;
-        margin-bottom: 20px;
-        color: #e6eef8;
-      }
+    .snapshot-card-label {
+      font-size: 10px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
 
-      .welcome-section p {
-        font-size: 18px;
-        color: #9ca3af;
-        line-height: 1.6;
-      }
-    </style>
-  </head>
-  <body>
-    <!-- Top Navigation Bar -->
-    <%- include('partials/_topbar') %>
+    .snapshot-card-value {
+      font-size: 20px;
+      font-weight: 700;
+      color: #e2e8f0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Quick action buttons */
+    .quick-action-row {
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      gap: 75px;
+      width: 100%;
+      margin-bottom: 24px;
+      padding-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .quick-action-btn {
+      background: #7c3aed;
+      color: white;
+      padding: 15px 24px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      flex: 1 1 180px;
+      justify-content: center;
+    }
+
+    .quick-action-btn:hover {
+      background: #6d28d9;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4);
+    }
+
+    .quick-action-btn.secondary {
+      background: #10b981;
+    }
+
+    .quick-action-btn.secondary:hover {
+      background: #059669;
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+
+    /* Top Movers */
+    .top-movers-card {
+      margin-top: 8px;
+      max-width: 420px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px 18px;
+      flex: 1 1 200px;
+    }
+
+    .top-movers-header {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    #top-movers-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .top-mover-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 14px;
+    }
+
+    .top-mover-left {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .top-mover-rank {
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .top-mover-symbol {
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .top-mover-change {
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+    }
+
+    .top-mover-change.positive {
+      color: #4ade80;
+    }
+
+    .top-mover-change.negative {
+      color: #f87171;
+    }
+
+    /* Lower row: Recent Trades + Top Movers */
+    .dashboard-lower-row {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .recent-trades-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 16px 18px;
+      flex: 1 1 260px;
+    }
+
+    .recent-trades-header {
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    #recent-trades-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .recent-trade-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+    }
+
+    .recent-trade-left {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .recent-trade-symbol {
+      font-weight: 600;
+      color: #e2e8f0;
+    }
+
+    .recent-trade-side {
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .recent-trade-side.buy {
+      color: #4ade80;
+    }
+
+    .recent-trade-side.sell {
+      color: #f87171;
+    }
+
+    .recent-trade-right {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+    }
+
+    .recent-trades-empty {
+      font-size: 12px;
+      color: #64748b;
+      font-style: italic;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Top Navigation Bar -->
+  <%- include('partials/_topbar') %>
     <!-- Sidebar -->
     <%- include('partials/_sidebar') %>
-    <!-- Main Content Area -->
-    <div class="main-content">
-      <div id="guestInfo" style="display: none">
-        <p>
-          Please <a href="/login">login</a> or
-          <a href="/register">register</a> to continue.
-        </p>
+      <!-- Main Content Area -->
+      <div class="main-content">
+        <div class="welcome-section">
+          <h2 id="welcome-text"></h2>
+        </div>
+
+        <!-- Snapshot Cards -->
+        <div class="snapshot-row">
+          <div class="snapshot-card">
+            <div class="snapshot-card-label">Portfolio</div>
+            <div class="snapshot-card-value" id="portfolio-value-card">$0.00</div>
+          </div>
+          <div class="snapshot-card">
+            <div class="snapshot-card-label">Cash</div>
+            <div class="snapshot-card-value" id="cash-value-card">$0.00</div>
+          </div>
+          <div class="snapshot-card">
+            <div class="snapshot-card-label">Crypto</div>
+            <div class="snapshot-card-value" id="crypto-value-card">$0.00</div>
+          </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="quick-action-row">
+          <button class="quick-action-btn" onclick="window.location.href='/trade'">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path
+                d="M12 1a1 1 0 0 1 1 1v1.07c2.84.24 5 2.12 5 4.43 0 2.47-2.18 4.02-5.38 4.43l-.62.07c-1.95.23-3 1-3 2.02 0 1.17 1.32 2.01 3 2.01 1.71 0 3.14-.72 3.75-1.87a1 1 0 0 1 1.79.91C15.7 18.67 14 19.76 12 19.93V21a1 1 0 1 1-2 0v-1.07C7.16 19.69 5 17.79 5 15.5c0-2.44 2.16-4 5.38-4.42l.62-.08C13 10.78 14 10 14 9c0-1.17-1.32-2-3-2s-2.83.72-3.47 1.78a1 1 0 1 1-1.73-.99C6.55 5.42 8.23 4.34 10 4.07V3a1 1 0 0 1 1-1z" />
+            </svg>
+            <span>Buy Crypto</span>
+          </button>
+
+          <button class="quick-action-btn" onclick="window.location.href='/coins'">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path
+                d="M12 2C6.48 2 2 5.13 2 9.5v5C2 18.87 6.48 22 12 22s10-3.13 10-7.5v-5C22 5.13 17.52 2 12 2zm0 2c4.42 0 8 2.24 8 5.5S16.42 15 12 15s-8-2.24-8-5.5S7.58 4 12 4zm0 13c3.86 0 7-1.79 7-4v-.76c-1.62 1.5-4.13 2.26-7 2.26s-5.38-.76-7-2.26V13c0 2.21 3.14 4 7 4z" />
+            </svg>
+            <span>View Coins</span>
+          </button>
+
+          <button class="quick-action-btn" onclick="window.location.href='/league'">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M12 2L1 9l11 7 9-5.73V17h2V9L12 2zm0 2.18L18.6 9 12 13.82 5.4 9 12 4.18zM5 18h14v2H5z" />
+            </svg>
+            <span>View League</span>
+          </button>
+
+          <button class="quick-action-btn" onclick="window.location.href='/portfolio'">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zM3 9h2V7H3v2zm4 8h14v-2H7v2zm0-4h14v-2H7v2zm0-6v2h14V7H7z" />
+            </svg>
+            <span>Portfolio</span>
+          </button>
+        </div>
+        <div class="dashboard-lower-row">
+          <div class="recent-trades-card">
+            <div class="recent-trades-header"> Recent Trades</div>
+            <div class="recent-trades-empty" id="recent-trades-empty" style="display: none;">
+              Join a League and Start Trading!
+            </div>
+            <div id="recent-trades-list"></div>
+          </div>
+          <div class="top-movers-card">
+            <div class="top-movers-header"> Top Movers (24h)</div>
+            <div id="top-movers-list"></div>
+          </div>
+        </div>
       </div>
+      <script>
+        async function initDashboard() {
+          try {
+            const meRes = await fetch("/api/me");
+            const welcomeEl = document.getElementById("welcome-text");
 
-      <div
-        id="authenticatedContent"
-        style="display: none"
-        class="welcome-section"
-      >
-        <h2>Welcome to CryptoFantasy!</h2>
-        <p>
-          Track your cryptocurrency portfolio, explore coins, and compete in
-          leagues. Use the sidebar to navigate through the app.
-        </p>
-      </div>
-    </div>
+            if (meRes.ok) {
+              const data = await meRes.json();
 
-    <script>
+              if (welcomeEl && data.user && data.user.username) {
+                welcomeEl.textContent = `Welcome back, ${data.user.username}!`;
+              }
 
-    </script>
-  </body>
+              loadSnapshot();
+              getTopMovers();
+              getRecentTrades();
+            } else if (meRes.status === 401) {
+              if (welcomeEl) welcomeEl.textContent = "";
+            } else {
+              console.warn("Unexpected /api/me status:", meRes.status);
+            }
+          } catch (e) {
+            console.error("Failed to load /api/me", e);
+          }
+        }
+
+        async function loadSnapshot() {
+          try {
+            const rPortfolio = await fetch("/api/portfolio");
+            if (rPortfolio.ok) {
+              const portfolioData = await rPortfolio.json();
+              const totalValEl = document.getElementById("portfolio-value-card");
+              const cashValEl = document.getElementById("cash-value-card");
+              const cryptoValEl = document.getElementById("crypto-value-card");
+              if (portfolioData && totalValEl && cashValEl && cryptoValEl) {
+                totalValEl.textContent = portfolioData["total_value_usd"];
+                cashValEl.textContent = portfolioData["cash_usd"];
+                cryptoValEl.textContent = portfolioData["crypto_value_usd"];
+              } else if (totalValEl && cashValEl && cryptoValEl) {
+                totalValEl.textContent = "N/A";
+                cashValEl.textContent = "N/A";
+                cryptoValEl.textContent = "N/A";
+              }
+            }
+          } catch (e) {
+            console.warn("Failed to load data", e);
+          }
+        }
+
+        async function getTopMovers() {
+          try {
+            const rCoins = await fetch("/api/cg/coins");
+            if (!rCoins.ok) return;
+
+            const coinsData = await rCoins.json();
+            const topMovers = coinsData
+              .sort((a, b) => b.price_change_percentage_24h - a.price_change_percentage_24h)
+              .slice(0, 4);
+
+            const listEl = document.getElementById("top-movers-list");
+            if (!listEl) return;
+
+            listEl.innerHTML = ""
+
+            topMovers.forEach((coin, pos) => {
+              const row = document.createElement("div");
+              row.className = "top-mover-row";
+
+              const left = document.createElement("div");
+              left.className = "top-mover-left";
+
+              const rank = document.createElement("span");
+              rank.className = "top-mover-rank";
+              rank.textContent = `${pos + 1}.`;
+
+              const symbol = document.createElement("span");
+              symbol.className = "top-mover-symbol";
+              symbol.textContent = coin.symbol.toUpperCase();
+
+              left.appendChild(rank);
+              left.appendChild(symbol);
+
+              const change = document.createElement("div");
+              change.className = "top-mover-change";
+
+              const sign = coin.price_change_percentage_24h > 0 ? "+" : "";
+              change.textContent = `${sign}${coin.price_change_percentage_24h.toFixed(2)}%`;
+              change.classList.add(coin.price_change_percentage_24h >= 0 ? "positive" : "negative");
+
+              row.appendChild(left);
+              row.appendChild(change);
+
+              listEl.appendChild(row);
+            });
+
+          } catch (e) {
+            console.warn("Failed to fetch top movers");
+          }
+        }
+
+        async function getRecentTrades() {
+          try {
+            const rTrades = await fetch("/api/trades/recent");
+            if (!rTrades.ok) return;
+
+            const tradesData = await rTrades.json();
+            const trades = tradesData.trades || [];
+
+            const listEl = document.getElementById("recent-trades-list");
+            const emptyEl = document.getElementById("recent-trades-empty");
+            if (!listEl || !emptyEl) return;
+
+            listEl.innerHTML = "";
+
+            if (!trades || trades.length === 0) {
+              emptyEl.style.display = "block";
+              return;
+            }
+
+            emptyEl.style.display = "none";
+
+            console.log(trades);
+
+            trades.forEach((trade) => {
+              const row = document.createElement("div");
+              row.className = "recent-trade-row";
+
+              const left = document.createElement("div");
+              left.className = "recent-trade-left";
+
+              const symbol = document.createElement("span");
+              symbol.className = "recent-trade-symbol";
+              symbol.textContent = trade.symbol.toUpperCase();
+
+              const side = document.createElement("span");
+              const sideValue = trade.side.toLowerCase();
+              side.className = `recent-trade-side ${sideValue}`;
+              side.textContent = trade.side.toUpperCase();
+
+              left.appendChild(symbol);
+              left.appendChild(side);
+
+              const right = document.createElement("div");
+              right.className = "recent-trade-right";
+
+              const qty = Number(trade.qty || 0);
+              const price = Number(trade.price_usd || 0);
+
+              right.textContent = `${qty} @ $${price.toFixed(2)}`;
+
+              row.appendChild(left);
+              row.appendChild(right);
+
+              listEl.appendChild(row);
+            });
+          } catch (e) {
+            console.warn("Failed to fetch recent trades");
+          }
+        }
+
+        initDashboard();
+      </script>
+</body>
+
 </html>
