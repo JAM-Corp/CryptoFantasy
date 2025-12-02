@@ -64,6 +64,15 @@
     transition: color 0.2s ease;
   }
 
+  .brand-img {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    object-fit: cover;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
   #league-select:hover ~ .league-select-arrow,
   #league-select:focus ~ .league-select-arrow {
     color: #7c3aed;
@@ -77,7 +86,21 @@
 </style>
 
 <div class="topbar">
-  <h1 onclick="window.location.href='/index'">CryptoFantasy</h1>
+  <h1
+    onclick="window.location.href='/index'"
+    style="display: flex; align-items: center; gap: 12px"
+  >
+    <picture>
+      <source srcset="/emblem.jpg" type="image/jpeg" />
+      <img
+        src="/emblem.svg"
+        alt="Emblem"
+        class="brand-img"
+        onerror="this.style.display='none'"
+      />
+    </picture>
+    <span>CryptoFantasy</span>
+  </h1>
   <div class="user-info">
     <span id="username">Loading...</span>
 

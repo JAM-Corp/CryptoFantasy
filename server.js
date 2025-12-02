@@ -25,11 +25,12 @@ app.use(express.static(path.join(__dirname, "public")));
 const PORT = process.env.PORT || 8080;
 let CG_API_KEY = process.env.CG_API_KEY || null;
 const FAST_SCHEDULE =
-  process.env.FAST_SCHEDULE === "1" ||
-  process.env.FAST_SCHEDULE === "true";
+  process.env.FAST_SCHEDULE === "1" || process.env.FAST_SCHEDULE === "true";
 
 function normalizeCoinId(raw) {
-  return String(raw || "").trim().toLowerCase();
+  return String(raw || "")
+    .trim()
+    .toLowerCase();
 }
 
 async function getDefaultLeagueCoinSymbols() {
@@ -151,7 +152,9 @@ async function joinLeagueForUserByCode(userId, rawCode) {
   }
 
   if (league.member_limit != null) {
-    const countRes = await pool.query(leagueQueries.countLeagueMembers, [league.id]);
+    const countRes = await pool.query(leagueQueries.countLeagueMembers, [
+      league.id,
+    ]);
     const memberCount = Number(countRes.rows[0].member_count || 0);
     if (memberCount >= league.member_limit) {
       const err = new Error("League is full");
@@ -164,7 +167,6 @@ async function joinLeagueForUserByCode(userId, rawCode) {
 
   return league;
 }
-
 
 async function ensurePortfolio(userId, leagueId) {
   if (!pool) return;
@@ -203,7 +205,6 @@ async function ensureSoloLeagueForUser(userId) {
   await ensurePortfolio(userId, leagueId);
   return { leagueId };
 }
-
 
 async function getOrCreateCurrentLeagueId(req) {
   if (!pool) return null;
@@ -255,8 +256,12 @@ function computeLeagueSchedule({ league, members }) {
   const isDaily = freq === "DAILY";
 
   const intervalMs = isDaily
-    ? (FAST_SCHEDULE ? 5 * 60 * 1000 : 24 * 60 * 60 * 1000) // 5 min or 1 day
-    : (FAST_SCHEDULE ? 5 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000);
+    ? FAST_SCHEDULE
+      ? 5 * 60 * 1000
+      : 24 * 60 * 60 * 1000 // 5 min or 1 day
+    : FAST_SCHEDULE
+    ? 5 * 60 * 1000
+    : 7 * 24 * 60 * 60 * 1000;
 
   const startDate = league.created_at
     ? new Date(league.created_at)
@@ -348,8 +353,6 @@ function computeLeagueSchedule({ league, members }) {
   return schedule;
 }
 
-
-
 async function getPriceAtOrBefore(symbol, asOf) {
   if (!pool) return 0;
 
@@ -415,10 +418,10 @@ async function getPortfolioValueAtTime({ userId, leagueId, asOf }) {
   let cash = 100000;
   const holdings = {}; // symbol -> qty
 
-  const tradesRes = await pool.query(
-    portfolioHistoryQueries.getTrades,
-    [userId, leagueId]
-  );
+  const tradesRes = await pool.query(portfolioHistoryQueries.getTrades, [
+    userId,
+    leagueId,
+  ]);
 
   const asOfMs = asOfDate.getTime();
   const trades = tradesRes.rows.filter(
@@ -483,8 +486,7 @@ async function scoreHeadToHeadMatchup({
   }
 
   const now = new Date();
-  const effectiveEnd =
-    now.getTime() < roundEnd.getTime() ? now : roundEnd;
+  const effectiveEnd = now.getTime() < roundEnd.getTime() ? now : roundEnd;
 
   const [homeStart, homeEnd, awayStart, awayEnd] = await Promise.all([
     getPortfolioValueAtTime({
@@ -681,6 +683,9 @@ app.get("/index", requireAuth, (req, res) =>
 );
 app.get("/league", requireAuth, (req, res) =>
   res.render("league", { activePage: "league" })
+);
+app.get("/matchups", requireAuth, (req, res) =>
+  res.render("matchups", { activePage: "matchups" })
 );
 app.get("/league/join/:code", async (req, res) => {
   const joinCode = req.params.code;
@@ -990,7 +995,6 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
   }
 });
 
-
 app.post("/api/leagues/join", requireAuth, async (req, res) => {
   try {
     if (!pool)
@@ -1028,7 +1032,7 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
 
     const leagueRes = await pool.query(
       `
-      SELECT id, name, settings, created_at, status, winner_user_id, completed_at
+      SELECT id, name, settings, created_at, status, winner_user_id, completed_at, join_code, owner_user_id
       FROM leagues
       WHERE id = $1
       `,
@@ -1056,7 +1060,15 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
 
     const settings = normalizeLeagueSettings(league.settings);
     const schedule = computeLeagueSchedule({ league, members });
-    const matchupFrequencyResolved = (settings.matchupFrequency || "WEEKLY").toUpperCase();
+    const matchupFrequencyResolved = (
+      settings.matchupFrequency || "WEEKLY"
+    ).toUpperCase();
+
+    // Prefer returning the persisted join code and a canonical invite URL
+    const joinCode = league.join_code || null;
+    const inviteUrl = joinCode
+      ? `${req.protocol}://${req.get("host")}/league/join/${joinCode}`
+      : null;
 
     return res.json({
       league: {
@@ -1064,6 +1076,11 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
         name: league.name,
         settings,
         created_at: league.created_at,
+        owner_user_id: league.owner_user_id || null,
+        joinCode,
+        inviteUrl,
+        isOwner:
+          req.session.userId && league.owner_user_id === req.session.userId,
       },
       matchupFrequencyResolved,
       memberCount: members.length,
@@ -1077,112 +1094,118 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
 });
 
 // Get scores for a specific round in the current active league
-app.get("/api/leagues/round/:roundIndex/scores", requireAuth, async (req, res) => {
-  try {
-    if (!pool) {
-      return res.status(500).json({ error: "Database not configured" });
-    }
+app.get(
+  "/api/leagues/round/:roundIndex/scores",
+  requireAuth,
+  async (req, res) => {
+    try {
+      if (!pool) {
+        return res.status(500).json({ error: "Database not configured" });
+      }
 
-    const roundIndex = Number(req.params.roundIndex);
-    if (!Number.isInteger(roundIndex) || roundIndex <= 0) {
-      return res.status(400).json({ error: "roundIndex must be a positive integer" });
-    }
+      const roundIndex = Number(req.params.roundIndex);
+      if (!Number.isInteger(roundIndex) || roundIndex <= 0) {
+        return res
+          .status(400)
+          .json({ error: "roundIndex must be a positive integer" });
+      }
 
-    const leagueId = await getOrCreateCurrentLeagueId(req);
+      const leagueId = await getOrCreateCurrentLeagueId(req);
 
-    const leagueRes = await pool.query(
-      `
+      const leagueRes = await pool.query(
+        `
       SELECT id, name, settings, created_at, status, winner_user_id, completed_at
       FROM leagues
       WHERE id = $1
       `,
-      [leagueId]
-    );
+        [leagueId]
+      );
 
-    if (!leagueRes.rows.length) {
-      return res.status(404).json({ error: "League not found" });
-    }
+      if (!leagueRes.rows.length) {
+        return res.status(404).json({ error: "League not found" });
+      }
 
-    const league = leagueRes.rows[0];
+      const league = leagueRes.rows[0];
 
-    const membersRes = await pool.query(
-      `
+      const membersRes = await pool.query(
+        `
       SELECT u.id, u.username
       FROM portfolios p
       JOIN users u ON u.id = p.user_id
       WHERE p.league_id = $1
       ORDER BY u.username ASC
       `,
-      [leagueId]
-    );
+        [leagueId]
+      );
 
-    const members = membersRes.rows;
-    const memberById = new Map(members.map((m) => [m.id, m]));
+      const members = membersRes.rows;
+      const memberById = new Map(members.map((m) => [m.id, m]));
 
-    const settings = normalizeLeagueSettings(league.settings);
-    const schedule = computeLeagueSchedule({ league, members });
+      const settings = normalizeLeagueSettings(league.settings);
+      const schedule = computeLeagueSchedule({ league, members });
 
-    const round = schedule.find((r) => r.roundIndex === roundIndex);
-    if (!round) {
-      return res.status(404).json({ error: "Round not found in schedule" });
-    }
-
-    const scoredMatchups = [];
-
-    for (const m of round.matchups) {
-      if (m.byeUserId) {
-        const byeMember = memberById.get(m.byeUserId);
-        scoredMatchups.push({
-          type: "BYE",
-          byeUserId: m.byeUserId,
-          byeUsername: m.byeUsername,
-          byeDisplayName: byeMember ? byeMember.username : m.byeUsername,
-        });
-        continue;
+      const round = schedule.find((r) => r.roundIndex === roundIndex);
+      if (!round) {
+        return res.status(404).json({ error: "Round not found in schedule" });
       }
 
-      const result = await scoreHeadToHeadMatchup({
-        leagueId,
-        round,
-        homeUserId: m.homeUserId,
-        awayUserId: m.awayUserId,
-      });
+      const scoredMatchups = [];
 
-      const homeMember = memberById.get(m.homeUserId);
-      const awayMember = memberById.get(m.awayUserId);
+      for (const m of round.matchups) {
+        if (m.byeUserId) {
+          const byeMember = memberById.get(m.byeUserId);
+          scoredMatchups.push({
+            type: "BYE",
+            byeUserId: m.byeUserId,
+            byeUsername: m.byeUsername,
+            byeDisplayName: byeMember ? byeMember.username : m.byeUsername,
+          });
+          continue;
+        }
 
-      scoredMatchups.push({
-        type: "HEAD_TO_HEAD",
-        homeUserId: m.homeUserId,
-        awayUserId: m.awayUserId,
-        homeUsername: m.homeUsername,
-        awayUsername: m.awayUsername,
-        homeDisplayName: homeMember ? homeMember.username : m.homeUsername,
-        awayDisplayName: awayMember ? awayMember.username : m.awayUsername,
-        score: result,
+        const result = await scoreHeadToHeadMatchup({
+          leagueId,
+          round,
+          homeUserId: m.homeUserId,
+          awayUserId: m.awayUserId,
+        });
+
+        const homeMember = memberById.get(m.homeUserId);
+        const awayMember = memberById.get(m.awayUserId);
+
+        scoredMatchups.push({
+          type: "HEAD_TO_HEAD",
+          homeUserId: m.homeUserId,
+          awayUserId: m.awayUserId,
+          homeUsername: m.homeUsername,
+          awayUsername: m.awayUsername,
+          homeDisplayName: homeMember ? homeMember.username : m.homeUsername,
+          awayDisplayName: awayMember ? awayMember.username : m.awayUsername,
+          score: result,
+        });
+      }
+
+      return res.json({
+        league: {
+          id: league.id,
+          name: league.name,
+          settings,
+          created_at: league.created_at,
+        },
+        round: {
+          roundIndex: round.roundIndex,
+          label: round.label,
+          start: round.start,
+          end: round.end,
+        },
+        matchups: scoredMatchups,
       });
+    } catch (e) {
+      console.error("Get round scores error:", e);
+      return res.status(500).json({ error: "Failed to compute round scores" });
     }
-
-    return res.json({
-      league: {
-        id: league.id,
-        name: league.name,
-        settings,
-        created_at: league.created_at,
-      },
-      round: {
-        roundIndex: round.roundIndex,
-        label: round.label,
-        start: round.start,
-        end: round.end,
-      },
-      matchups: scoredMatchups,
-    });
-  } catch (e) {
-    console.error("Get round scores error:", e);
-    return res.status(500).json({ error: "Failed to compute round scores" });
   }
-});
+);
 
 app.get("/api/leagues/standings", requireAuth, async (req, res) => {
   try {
@@ -1253,6 +1276,9 @@ app.get("/api/leagues/standings", requireAuth, async (req, res) => {
         status: league.status,
         winner_user_id: league.winner_user_id,
         completed_at: league.completed_at,
+        owner_user_id: league.owner_user_id || null,
+        isOwner:
+          req.session.userId && league.owner_user_id === req.session.userId,
       },
       asOf,
       standings,
@@ -1290,8 +1316,9 @@ app.post("/api/leagues/complete", requireAuth, async (req, res) => {
       return res.status(500).json({ error: "Database not configured" });
     }
 
-    const bodyLeagueId = req.body && req.body.leagueId ? Number(req.body.leagueId) : null;
-    const leagueId = bodyLeagueId || await getOrCreateCurrentLeagueId(req);
+    const bodyLeagueId =
+      req.body && req.body.leagueId ? Number(req.body.leagueId) : null;
+    const leagueId = bodyLeagueId || (await getOrCreateCurrentLeagueId(req));
 
     const leagueRes = await pool.query(
       `
@@ -1309,7 +1336,9 @@ app.post("/api/leagues/complete", requireAuth, async (req, res) => {
     const league = leagueRes.rows[0];
 
     if (league.owner_user_id !== req.session.userId) {
-      return res.status(403).json({ error: "Only the league owner can complete this league" });
+      return res
+        .status(403)
+        .json({ error: "Only the league owner can complete this league" });
     }
 
     if (league.status === "COMPLETED") {
@@ -1343,7 +1372,9 @@ app.post("/api/leagues/complete", requireAuth, async (req, res) => {
 
     const schedule = computeLeagueSchedule({ league, members });
     if (!schedule.length) {
-      return res.status(400).json({ error: "League has no schedule to complete" });
+      return res
+        .status(400)
+        .json({ error: "League has no schedule to complete" });
     }
 
     const lastRound = schedule[schedule.length - 1];
@@ -1369,7 +1400,9 @@ app.post("/api/leagues/complete", requireAuth, async (req, res) => {
     });
 
     if (!standings.length) {
-      return res.status(400).json({ error: "No standings available to finalize" });
+      return res
+        .status(400)
+        .json({ error: "No standings available to finalize" });
     }
 
     const champion = standings[0];
@@ -1399,7 +1432,6 @@ app.post("/api/leagues/complete", requireAuth, async (req, res) => {
     return res.status(500).json({ error: "Failed to complete league" });
   }
 });
-
 
 app.get("/api/leagues/mine", requireAuth, async (req, res) => {
   try {
@@ -1503,8 +1535,8 @@ app.get("/api/cg/coins", async (req, res) => {
     const data = await response.json();
 
     const payload = data.map((c) => ({
-      id: c.id,          // CoinGecko ID (e.g. "bitcoin")
-      symbol: c.id,      // we treat ID as our symbol internally
+      id: c.id, // CoinGecko ID (e.g. "bitcoin")
+      symbol: c.id, // we treat ID as our symbol internally
       name: c.name,
       current_price: c.current_price,
       market_cap_rank: c.market_cap_rank,
@@ -1892,7 +1924,6 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
-
 
 app.listen(PORT, () => {
   console.log(`listening on :${PORT}`);
