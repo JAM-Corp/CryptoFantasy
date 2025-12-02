@@ -383,6 +383,105 @@
         gap: 6px;
         cursor: pointer;
       }
+
+      /* ========= League UI styles ========= */
+      .tabs {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .tab-btn {
+        background: transparent;
+        color: #cbd5e1;
+        border: 1px solid transparent;
+        padding: 8px 14px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-weight: 600;
+        transition: all 0.18s ease;
+      }
+      .tab-btn:hover {
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .tab-btn.active {
+        background: linear-gradient(90deg, #1f2937, #0b1220);
+        color: #fff;
+        border-color: rgba(124, 58, 237, 0.35);
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.6);
+      }
+
+      .complete-btn {
+        background: #ef4444;
+        border: none;
+        color: #fff;
+      }
+      .complete-btn[disabled] {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      #tabContents {
+        margin-top: 18px;
+      }
+      #scheduleContainer {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .schedule-card {
+        background: #071226;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        padding: 14px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .schedule-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .round-meta {
+        color: #9ca3af;
+        font-size: 13px;
+      }
+      .matchup-row {
+        padding: 8px 0;
+        border-top: 1px dashed rgba(255, 255, 255, 0.02);
+        color: #cbd5e1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .standings-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: transparent;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .standings-table thead {
+        background: rgba(124, 58, 237, 0.08);
+        color: #cbd5e1;
+      }
+      .standings-table th,
+      .standings-table td {
+        padding: 10px 12px;
+        text-align: left;
+      }
+      .standings-table tbody tr {
+        border-top: 1px solid rgba(255, 255, 255, 0.02);
+      }
+      .champion-badge {
+        display: inline-block;
+        background: linear-gradient(90deg, #059669, #10b981);
+        color: #042f2e;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-weight: 700;
+      }
     </style>
   </head>
   <body>
@@ -432,6 +531,117 @@
           </svg>
           Join League
         </button>
+        <button
+          id="inviteBtn"
+          class="action-btn"
+          style="background: linear-gradient(90deg, #06b6d4, #7c3aed)"
+          onclick="openInviteModal()"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="currentColor"
+          >
+            <path
+              d="M21 8V7l-3 2-2-1 3-2h-1L12 2 7 5l4 2 2 1-3 2v1l3-1 5 3v-1l3-2zM3 13v6h6l9-9-6-6L6 10l-3 3z"
+            />
+          </svg>
+          Invite
+        </button>
+        <div
+          id="inviteMsg"
+          style="
+            display: inline-block;
+            margin-left: 12px;
+            color: #9ca3af;
+            font-size: 14px;
+          "
+        ></div>
+      </div>
+
+      <div id="leagueArea" style="margin-top: 30px">
+        <div
+          style="
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+          "
+        >
+          <div></div>
+          <div>
+            <button
+              id="completeLeagueBtn"
+              class="action-btn complete-btn"
+              style="display: none"
+              onclick="completeLeague()"
+            >
+              Complete League
+            </button>
+          </div>
+        </div>
+
+        <!-- INVITE MODAL -->
+        <div
+          id="inviteModal"
+          class="modal-overlay"
+          onclick="closeModalOnOverlay(event,'inviteModal')"
+        >
+          <div class="modal" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closeInviteModal()">×</button>
+            <h2 class="modal-title">Share League Invite</h2>
+            <p class="modal-subtitle">
+              This is the invite URL for the currently selected league.
+            </p>
+
+            <div style="display: flex; flex-direction: column; gap: 12px">
+              <input
+                id="inviteUrlInput"
+                class="form-input"
+                readonly
+                style="
+                  background: #0b1220;
+                  color: #e6eef8;
+                  border: 1px solid rgba(255, 255, 255, 0.04);
+                "
+              />
+              <div style="display: flex; gap: 8px; align-items: center">
+                <button
+                  class="modal-btn primary"
+                  style="padding: 10px 16px"
+                  onclick="copyInviteFromModal()"
+                >
+                  Copy Invite
+                </button>
+                <button class="modal-btn cancel" onclick="closeInviteModal()">
+                  Close
+                </button>
+                <div
+                  id="inviteModalMsg"
+                  style="color: #9ca3af; margin-left: 8px"
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="tabContents" style="margin-top: 18px">
+          <div id="scheduleTab" style="display: none">
+            <div
+              id="scheduleMeta"
+              style="margin-bottom: 12px; color: #9ca3af; font-size: 14px"
+            >
+              Loading league info...
+            </div>
+            <div id="scheduleContainer">Loading schedule...</div>
+          </div>
+
+          <div id="standingsTab" style="display: none">
+            <div id="standingsContainer">Loading standings...</div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -465,7 +675,9 @@
 
           <!-- Number of Matchups -->
           <div class="form-group">
-            <label class="form-label" for="matchupCount">Number of Matchups</label>
+            <label class="form-label" for="matchupCount"
+              >Number of Matchups</label
+            >
             <input
               type="number"
               id="matchupCount"
@@ -479,7 +691,9 @@
 
           <!-- Number of Members -->
           <div class="form-group">
-            <label class="form-label" for="memberCount">Number of Members</label>
+            <label class="form-label" for="memberCount"
+              >Number of Members</label
+            >
             <input
               type="number"
               id="memberCount"
@@ -505,11 +719,7 @@
                 Weekly
               </label>
               <label>
-                <input
-                  type="radio"
-                  name="matchupFrequency"
-                  value="DAILY"
-                />
+                <input type="radio" name="matchupFrequency" value="DAILY" />
                 Daily
               </label>
             </div>
@@ -529,7 +739,7 @@
           </div>
           <div
             id="createLeagueMessage"
-            style="display:none; margin-top:14px; font-size:14px;"
+            style="display: none; margin-top: 14px; font-size: 14px"
           ></div>
         </form>
       </div>
@@ -576,7 +786,7 @@
 
           <div
             id="joinLeagueMessage"
-            style="display:none; margin-top:14px; font-size:14px;"
+            style="display: none; margin-top: 14px; font-size: 14px"
           ></div>
         </form>
       </div>
@@ -620,16 +830,11 @@
         const matchupCount = Number(matchupRaw);
         const matchupFrequency =
           (
-            document.querySelector(
-              'input[name="matchupFrequency"]:checked'
-            ) || {}
+            document.querySelector('input[name="matchupFrequency"]:checked') ||
+            {}
           ).value || "WEEKLY";
 
-        if (
-          !leagueName ||
-          !Number.isFinite(memberCount) ||
-          memberCount < 2
-        ) {
+        if (!leagueName || !Number.isFinite(memberCount) || memberCount < 2) {
           showMessage(
             "createLeagueMessage",
             "Please enter a valid name and member count (>= 2).",
@@ -659,8 +864,8 @@
               name: leagueName,
               memberCount: memberCount,
               matchupCount: matchupCount,
-              matchupFrequency: matchupFrequency
-            })
+              matchupFrequency: matchupFrequency,
+            }),
           });
 
           const data = await res.json();
@@ -686,6 +891,42 @@
           }
 
           showMessage("createLeagueMessage", msg, false);
+
+          // If the server returned an invite URL or join code, prefer showing
+          // that exact invite immediately (don't rely on schedule refresh).
+          try {
+            let resolvedInvite = "";
+            if (inviteUrl) {
+              resolvedInvite = inviteUrl;
+            } else if (code) {
+              resolvedInvite = window.location.origin + "/join/" + code;
+            }
+
+            if (resolvedInvite) {
+              // populate invite button dataset (so copyInvite works)
+              const btn = document.getElementById("inviteBtn");
+              if (btn) {
+                btn.dataset.invite = resolvedInvite;
+                btn.disabled = false;
+              }
+
+              // populate and open invite modal so the user sees the exact URL
+              const input = document.getElementById("inviteUrlInput");
+              const modal = document.getElementById("inviteModal");
+              const modalMsg = document.getElementById("inviteModalMsg");
+              if (input) input.value = resolvedInvite;
+              if (modalMsg) modalMsg.textContent = "Invite ready";
+              if (modal) modal.classList.add("active");
+            } else {
+              // fallback: refresh league data so invite button can be built
+              await loadLeagueData();
+            }
+          } catch (e) {
+            // best-effort: still refresh league data
+            try {
+              await loadLeagueData();
+            } catch (e) {}
+          }
         } catch (err) {
           console.error("Create league error:", err);
           showMessage(
@@ -714,7 +955,11 @@
         const rawInput = document.getElementById("leagueCode").value.trim();
 
         if (!rawInput) {
-          showMessage("joinLeagueMessage", "Please enter a league code or invite URL.", true);
+          showMessage(
+            "joinLeagueMessage",
+            "Please enter a league code or invite URL.",
+            true
+          );
           return;
         }
 
@@ -731,7 +976,11 @@
         }
 
         if (!leagueCode) {
-          showMessage("joinLeagueMessage", "Could not extract a league code from that input.", true);
+          showMessage(
+            "joinLeagueMessage",
+            "Could not extract a league code from that input.",
+            true
+          );
           return;
         }
 
@@ -739,13 +988,17 @@
           const res = await fetch("/api/leagues/join", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ code: leagueCode })
+            body: JSON.stringify({ code: leagueCode }),
           });
 
           const data = await res.json();
 
           if (!res.ok) {
-            showMessage("joinLeagueMessage", data.error || "Failed to join league.", true);
+            showMessage(
+              "joinLeagueMessage",
+              data.error || "Failed to join league.",
+              true
+            );
             return;
           }
 
@@ -757,7 +1010,11 @@
           );
         } catch (err) {
           console.error("Join league error:", err);
-          showMessage("joinLeagueMessage", "Network error joining league.", true);
+          showMessage(
+            "joinLeagueMessage",
+            "Network error joining league.",
+            true
+          );
         }
       }
 
@@ -779,5 +1036,404 @@
       });
     </script>
 
+    <script>
+      // =========================
+      // League schedule & standings
+      // =========================
+      let currentSchedule = null;
+      let currentStandings = null;
+
+      function showTab(name) {
+        const btnSchedule = document.getElementById("tabSchedule");
+        const btnMatchups = document.getElementById("tabMatchups");
+        const btnStandings = document.getElementById("tabStandings");
+
+        // remove all active states
+        [btnSchedule, btnMatchups, btnStandings].forEach(
+          (b) => b && b.classList.remove("active")
+        );
+
+        // hide all panes
+        ["tabSchedule", "matchupsTab", "tabStandings"].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.style.display = "none";
+        });
+
+        if (name === "schedule") {
+          btnSchedule && btnSchedule.classList.add("active");
+          document.getElementById("tabSchedule").style.display = "block";
+        } else if (name === "matchups") {
+          btnMatchups && btnMatchups.classList.add("active");
+          document.getElementById("matchupsTab").style.display = "block";
+        } else {
+          btnStandings && btnStandings.classList.add("active");
+          document.getElementById("tabStandings").style.display = "block";
+        }
+      }
+
+      async function loadLeagueData() {
+        try {
+          const [sRes, stRes] = await Promise.all([
+            fetch("/api/leagues/schedule"),
+            fetch("/api/leagues/standings"),
+          ]);
+
+          const sJson = sRes.ok
+            ? await sRes.json()
+            : { error: "Failed to load schedule" };
+          const stJson = stRes.ok
+            ? await stRes.json()
+            : { error: "Failed to load standings" };
+
+          if (sJson.error) {
+            document.getElementById("scheduleContainer").textContent =
+              sJson.error;
+            currentSchedule = null;
+          } else {
+            currentSchedule = sJson;
+            renderSchedule(sJson);
+          }
+
+          if (stJson.error) {
+            document.getElementById("standingsContainer").textContent =
+              stJson.error;
+            currentStandings = null;
+          } else {
+            currentStandings = stJson;
+            renderStandings(stJson);
+          }
+
+          // no matchups rendered here (dedicated page)
+
+          // Show Complete button if last round ended and league not already completed
+          try {
+            const schedule =
+              (currentSchedule && currentSchedule.schedule) || [];
+            const last = schedule[schedule.length - 1];
+            const now = new Date();
+            const completeBtn = document.getElementById("completeLeagueBtn");
+            if (last) {
+              const lastEnd = new Date(last.end);
+              // Only show complete button when season finished, league not already completed,
+              // and the current user is the league owner (server-provided flag)
+              const isOwner =
+                currentSchedule &&
+                currentSchedule.league &&
+                currentSchedule.league.isOwner;
+              if (
+                lastEnd.getTime() <= now.getTime() &&
+                currentStandings &&
+                (!currentStandings.league ||
+                  currentStandings.league.status !== "COMPLETED") &&
+                isOwner
+              ) {
+                completeBtn.style.display = "inline-flex";
+              } else {
+                completeBtn.style.display = "none";
+              }
+            } else {
+              completeBtn.style.display = "none";
+            }
+          } catch (e) {}
+        } catch (err) {
+          console.error("Error loading league data", err);
+          document.getElementById("scheduleContainer").textContent =
+            "Network error loading schedule";
+          document.getElementById("standingsContainer").textContent =
+            "Network error loading standings";
+        }
+        // update invite button visibility after loading league data
+        try {
+          updateInviteButton();
+        } catch (e) {}
+      }
+
+      function renderSchedule(payload) {
+        const container = document.getElementById("scheduleContainer");
+        const meta = document.getElementById("scheduleMeta");
+        const schedule = payload.schedule || [];
+        const members = payload.members || [];
+        const memberCount =
+          payload.memberCount != null ? payload.memberCount : members.length;
+
+        // show member info to help debug
+        meta.textContent = `Members: ${memberCount} ${
+          members.length ? "— " + members.map((m) => m.username).join(", ") : ""
+        }`;
+        console.debug("League schedule payload:", payload);
+
+        if (!schedule.length) {
+          container.innerHTML =
+            '<div style="color:#9ca3af;">No schedule available yet. (Make sure at least 2 members have portfolios / joined.)</div>';
+          return;
+        }
+
+        // Render each round with matchups shown as paired cards (left/right) similar to provided mock
+        let html = '<div style="display:flex;flex-direction:column;gap:12px;">';
+        for (const r of schedule) {
+          const start = new Date(r.start).toLocaleString();
+          const end = new Date(r.end).toLocaleString();
+
+          html += '<div class="schedule-card">';
+          html += '<div class="schedule-header">';
+          html += `<div><strong style="color:#e6eef8">${r.label}</strong><div class="round-meta">${start} → ${end}</div></div>`;
+          html += `<div><button class="tab-btn" style="padding:8px 12px;font-size:13px;" onclick="viewRound(${r.roundIndex})">View Scores</button></div>`;
+          html += "</div>";
+
+          // matchups list: grid with two-column cards separated by VS
+          html +=
+            '<div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">';
+          for (const m of r.matchups) {
+            if (m.byeUserId) {
+              html += `<div class="matchup-row"><div style="flex:1;color:#9ca3af">BYE — ${m.byeUsername}</div></div>`;
+              continue;
+            }
+
+            html += '<div style="display:flex;align-items:center;gap:12px;">';
+            // left card
+            html += `<div style="flex:1;background:linear-gradient(90deg,#071226,#071827);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);">`;
+            html += `<div style="font-weight:700;color:#e6eef8">${m.homeUsername}</div>`;
+            html += `<div style="color:#9ca3af;font-size:13px;margin-top:6px">--</div>`;
+            html += "</div>";
+
+            // VS center
+            html +=
+              '<div style="width:60px;text-align:center;color:#9ca3af;font-weight:700">VS</div>';
+
+            // right card
+            html += `<div style="flex:1;background:linear-gradient(90deg,#071226,#071827);padding:12px;border-radius:10px;border:1px solid rgba(255,255,255,0.02);">`;
+            html += `<div style="font-weight:700;color:#e6eef8">${m.awayUsername}</div>`;
+            html += `<div style="color:#9ca3af;font-size:13px;margin-top:6px">--</div>`;
+            html += "</div>";
+
+            html += "</div>"; // matchup row
+          }
+          html += "</div>"; // round matchups
+
+          html += "</div>"; // schedule-card
+        }
+        html += "</div>";
+        container.innerHTML = html;
+      }
+
+      function renderStandings(payload) {
+        const container = document.getElementById("standingsContainer");
+        const standings = payload.standings || [];
+        const champion = payload.champion || null;
+
+        let html = "";
+        if (champion) {
+          html += `<div style="margin-bottom:12px;"><span class="champion-badge">Champion: ${champion.username}</span> <span style="color:#9ca3af; margin-left:10px;">Wins: ${champion.wins} · Diff: ${champion.pointDiff}</span></div>`;
+        }
+
+        html += '<table class="standings-table">';
+        html +=
+          "<thead><tr><th>Pos</th><th>Player</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>Diff</th></tr></thead><tbody>";
+        standings.forEach((row, idx) => {
+          html += `<tr><td>${idx + 1}</td><td>${row.username}</td><td>${
+            row.wins
+          }</td><td>${row.losses}</td><td>${row.ties}</td><td>${
+            row.pointsFor
+          }</td><td>${row.pointsAgainst}</td><td>${row.pointDiff}</td></tr>`;
+        });
+        html += "</tbody></table>";
+        container.innerHTML = html;
+      }
+
+      // Matchups rendering moved to dedicated page
+
+      async function viewRound(roundIndex) {
+        try {
+          const res = await fetch(`/api/leagues/round/${roundIndex}/scores`);
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            alert(j.error || "Failed to load round scores");
+            return;
+          }
+          const data = await res.json();
+          let text = `${data.round.label} (${new Date(
+            data.round.start
+          ).toLocaleString()} → ${new Date(
+            data.round.end
+          ).toLocaleString()})\n\n`;
+          for (const m of data.matchups) {
+            if (m.type === "BYE") {
+              text += `BYE: ${m.byeDisplayName}\n`;
+            } else if (m.type === "HEAD_TO_HEAD") {
+              const s = m.score;
+              const homePts = (s.home.profit || 0).toFixed(2);
+              const awayPts = (s.away.profit || 0).toFixed(2);
+              const result =
+                s.result === "TIE"
+                  ? "TIE"
+                  : s.winnerUserId === m.homeUserId
+                  ? `${m.homeDisplayName} WIN`
+                  : `${m.awayDisplayName} WIN`;
+              text += `${m.homeDisplayName} (${homePts}) vs ${m.awayDisplayName} (${awayPts}) -> ${result}\n`;
+            }
+          }
+          alert(text);
+        } catch (e) {
+          console.error("Error loading round", e);
+          alert("Network error loading round scores");
+        }
+      }
+
+      async function completeLeague() {
+        if (
+          !confirm(
+            "Are you sure you want to finalize this league? This action marks the league COMPLETE and sets the champion."
+          )
+        )
+          return;
+        try {
+          const res = await fetch("/api/leagues/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const j = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            alert(j.error || "Failed to complete league");
+            return;
+          }
+          alert(
+            "League finalized. Champion: " +
+              (j.league && j.league.winner_username
+                ? j.league.winner_username
+                : "unknown")
+          );
+          await loadLeagueData();
+          showTab("standings");
+        } catch (e) {
+          console.error("Complete league error", e);
+          alert("Network error completing league");
+        }
+      }
+
+      // Initialize default tab and load data
+      // showTab("schedule");
+      // Default to standings now that schedule tab was removed
+      showTab("standings");
+      loadLeagueData();
+
+      // Invite helpers
+      function updateInviteButton() {
+        const btn = document.getElementById("inviteBtn");
+        const msg = document.getElementById("inviteMsg");
+        if (!btn) return;
+        msg.textContent = "";
+
+        // Default: disable the button until we have league data
+        btn.disabled = true;
+        btn.dataset.invite = "";
+
+        if (!currentSchedule || !currentSchedule.league) {
+          // no active league selected
+          btn.title = "No active league selected";
+          return;
+        }
+
+        const league = currentSchedule.league;
+
+        // Prefer the server-provided invite URL
+        let invite = league.inviteUrl || "";
+
+        // Fallback to joinCode-derived URL
+        if (!invite && league.joinCode) {
+          invite = window.location.origin + "/join/" + league.joinCode;
+        }
+
+        // Final fallback: point to the league view (useful when no join code)
+        if (!invite && league.id) {
+          invite = window.location.origin + "/league/" + league.id;
+        }
+
+        if (invite) {
+          btn.dataset.invite = invite;
+          btn.disabled = false;
+          btn.title = "Copy invite URL for this league";
+        } else {
+          btn.title = "No invite URL available for this league";
+        }
+      }
+
+      async function copyInvite() {
+        const btn = document.getElementById("inviteBtn");
+        const msg = document.getElementById("inviteMsg");
+        if (!btn) return;
+        const invite = btn.dataset.invite;
+        if (!invite) return;
+        try {
+          await navigator.clipboard.writeText(invite);
+          // use showMessage helper if available, else set inline msg
+          if (typeof showMessage === "function") {
+            showMessage("inviteMsg", "Invite copied to clipboard");
+          } else if (msg) {
+            msg.textContent = "Invite copied";
+            setTimeout(() => {
+              msg.textContent = "";
+            }, 3000);
+          }
+        } catch (e) {
+          if (msg) msg.textContent = invite; // fallback show url
+        }
+      }
+
+      function openInviteModal() {
+        const btn = document.getElementById("inviteBtn");
+        const input = document.getElementById("inviteUrlInput");
+        const msg = document.getElementById("inviteModalMsg");
+        msg.textContent = "";
+        let invite = "";
+
+        // Prefer server-provided invite, else dataset, else try building from currentSchedule
+        if (
+          currentSchedule &&
+          currentSchedule.league &&
+          currentSchedule.league.inviteUrl
+        ) {
+          invite = currentSchedule.league.inviteUrl;
+        } else if (btn && btn.dataset && btn.dataset.invite) {
+          invite = btn.dataset.invite;
+        } else if (currentSchedule && currentSchedule.league) {
+          const l = currentSchedule.league;
+          if (l.joinCode)
+            invite = window.location.origin + "/join/" + l.joinCode;
+          else if (l.id) invite = window.location.origin + "/league/" + l.id;
+        }
+
+        if (!invite) {
+          msg.textContent = "No invite URL available for the current league.";
+        }
+
+        if (input) input.value = invite || "";
+        document.getElementById("inviteModal").classList.add("active");
+      }
+
+      function closeInviteModal() {
+        document.getElementById("inviteModal").classList.remove("active");
+      }
+
+      async function copyInviteFromModal() {
+        const input = document.getElementById("inviteUrlInput");
+        const msg = document.getElementById("inviteModalMsg");
+        if (!input) return;
+        const url = input.value;
+        if (!url) {
+          msg.textContent = "No invite URL to copy";
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(url);
+          msg.textContent = "Copied to clipboard";
+          setTimeout(() => {
+            msg.textContent = "";
+          }, 2500);
+        } catch (e) {
+          msg.textContent = url; // fallback show
+        }
+      }
+    </script>
   </body>
 </html>

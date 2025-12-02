@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Matchups - CryptoFantasy</title>
+    <style>
+      /* Global styles (copied from league page) */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #0f1724;
+        color: #e6eef8;
+        overflow-x: hidden;
+      }
+
+      /* Top Navigation Bar */
+      .topbar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: rgba(15, 23, 36, 0.95);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 20px;
+        z-index: 100;
+      }
+      .topbar h1 {
+        font-size: 24px;
+        color: #7c3aed;
+        cursor: pointer;
+      }
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+
+      /* Sidebar */
+      .sidebar {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        width: 250px;
+        height: calc(100vh - 60px);
+        background: rgba(255, 255, 255, 0.05);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px 0;
+      }
+      .sidebar-btn {
+        width: 100%;
+        background: transparent;
+        color: #e6eef8;
+        padding: 15px 20px;
+        border: none;
+        text-align: left;
+        cursor: pointer;
+        font-size: 16px;
+        transition: all 0.3s ease;
+        border-left: 3px solid transparent;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .sidebar-btn:hover {
+        background: rgba(124, 58, 237, 0.2);
+        border-left-color: #7c3aed;
+      }
+      .sidebar-btn.active {
+        background: rgba(124, 58, 237, 0.3);
+        border-left-color: #7c3aed;
+        color: #7c3aed;
+      }
+      .sidebar-btn svg {
+        width: 20px;
+        height: 20px;
+        fill: #9ca3af;
+        transition: fill 0.3s ease;
+      }
+      .sidebar-btn:hover svg,
+      .sidebar-btn.active svg {
+        fill: #7c3aed;
+      }
+      .sidebar-footer {
+        position: absolute;
+        bottom: 0;
+        width: 100%;
+        padding: 20px 0;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      /* Main Content Area */
+      .main-content {
+        margin-left: 250px;
+        margin-top: 60px;
+        padding: 40px;
+        min-height: calc(100vh - 60px);
+      }
+      .page-title {
+        font-size: 32px;
+        margin-bottom: 8px;
+        color: #e6eef8;
+      }
+      .page-desc {
+        color: #9ca3af;
+        margin-bottom: 20px;
+      }
+
+      /* Matchups specific styles */
+      .schedule-card {
+        background: #071226;
+        border: 1px solid rgba(255, 255, 255, 0.04);
+        padding: 14px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .schedule-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .round-meta {
+        color: #9ca3af;
+        font-size: 13px;
+      }
+      .matchup-pair {
+        display: flex;
+        gap: 12px;
+        align-items: stretch;
+      }
+      .matchup-card {
+        background: linear-gradient(90deg, #0b1220, #071226);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        padding: 12px 16px;
+        border-radius: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .matchup-row-inner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .team-side {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .team-left {
+        justify-content: flex-start;
+      }
+      .team-right {
+        justify-content: flex-end;
+      }
+      .team-right .team-meta {
+        text-align: right;
+      }
+      .team-side .team-meta {
+        display: flex;
+        flex-direction: column;
+      }
+      .team-score {
+        margin-left: auto;
+        font-weight: 700;
+        color: #e6eef8;
+      }
+      .vs-wrap {
+        position: relative;
+        width: 64px;
+        height: 64px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .vs-line {
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 3px;
+        top: -12px;
+        bottom: -12px;
+        background: rgba(255, 255, 255, 0.03);
+        border-radius: 4px;
+        z-index: 1;
+      }
+      .vs-circle {
+        position: relative;
+        z-index: 2;
+        width: 56px;
+        height: 56px;
+        border-radius: 999px;
+        background: #0f1724;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #9ca3af;
+        font-weight: 800;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+      }
+      .score-bar {
+        height: 8px;
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-top: 6px;
+        position: relative;
+      }
+      .score-bar .bar-left {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        height: 100%;
+        background: linear-gradient(90deg, #10b981, #059669);
+        width: 50%;
+        border-radius: 8px 0 0 8px;
+      }
+      .score-bar .bar-right {
+        position: absolute;
+        right: 0;
+        top: 0;
+        bottom: 0;
+        height: 100%;
+        background: linear-gradient(90deg, #fb7185, #f43f5e);
+        width: 50%;
+        border-radius: 0 8px 8px 0;
+      }
+      .bar-percent-left,
+      .bar-percent-right {
+        position: absolute;
+        top: -18px;
+        font-size: 12px;
+        color: #e6eef8;
+        font-weight: 700;
+      }
+      .bar-percent-left {
+        left: 8px;
+      }
+      .bar-percent-right {
+        right: 8px;
+      }
+      .team-card {
+        flex: 1;
+        background: linear-gradient(90deg, #071226, #071827);
+        padding: 14px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.03);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .team-name {
+        font-weight: 700;
+        color: #e6eef8;
+      }
+      .team-sub {
+        color: #9ca3af;
+        font-size: 13px;
+        margin-top: 6px;
+      }
+      .vs-block {
+        width: 64px;
+        text-align: center;
+        color: #9ca3af;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .matchups-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      /* Round navigation buttons */
+      .round-nav {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        justify-content: center;
+      }
+      .tab-btn {
+        background: linear-gradient(90deg, #111827, #0b1220);
+        color: #e6eef8;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 8px 14px;
+        border-radius: 999px;
+        font-weight: 700;
+        cursor: pointer;
+        box-shadow: 0 6px 14px rgba(2, 6, 23, 0.6);
+        transition: transform 0.12s ease, box-shadow 0.12s ease,
+          background 0.12s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .tab-btn svg {
+        width: 16px;
+        height: 16px;
+        opacity: 0.95;
+      }
+      .tab-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 24px rgba(2, 6, 23, 0.7);
+      }
+      .tab-btn:active {
+        transform: translateY(0);
+      }
+      .tab-btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+    </style>
+  </head>
+  <body>
+    <%- include('partials/_topbar') %> <%- include('partials/_sidebar') %>
+
+    <div class="main-content">
+      <h1 class="page-title">Matchups</h1>
+
+      <div id="matchupsContainer">Loading matchups...</div>
+    </div>
+
+    <script>
+      async function loadMatchups() {
+        try {
+          const res = await fetch("/api/leagues/schedule", {
+            credentials: "same-origin",
+          });
+          const contentType = (
+            res.headers.get("content-type") || ""
+          ).toLowerCase();
+
+          // If server returned HTML (likely a login redirect), go to login page
+          if (contentType.includes("text/html")) {
+            window.location.href = "/login";
+            return;
+          }
+
+          if (!res.ok) {
+            const j = await res.json().catch(() => ({}));
+            document.getElementById("matchupsContainer").textContent =
+              j.error || "Failed to load matchups";
+            return;
+          }
+
+          if (!contentType.includes("application/json")) {
+            console.error(
+              "Unexpected content-type for /api/leagues/schedule:",
+              contentType
+            );
+            document.getElementById("matchupsContainer").textContent =
+              "Unexpected server response";
+            return;
+          }
+
+          const payload = await res.json().catch((err) => {
+            console.error("Error parsing schedule JSON:", err);
+            document.getElementById("matchupsContainer").textContent =
+              "Invalid server response";
+            return null;
+          });
+
+          if (!payload) return;
+
+          renderMatchups(payload);
+        } catch (e) {
+          console.error("loadMatchups error", e);
+          document.getElementById("matchupsContainer").textContent =
+            "Network error";
+        }
+      }
+
+      // Keep schedule available for navigation
+      let __scheduleData = [];
+      let __currentPos = 0; // index into schedule array
+
+      function renderMatchups(payload) {
+        __scheduleData = payload.schedule || [];
+
+        if (!__scheduleData.length) {
+          document.getElementById("matchupsContainer").innerHTML =
+            '<div style="color:#9ca3af">No matchups available yet.</div>';
+          return;
+        }
+
+        // determine initial current position: active round (now between start & end),
+        // otherwise first future round, otherwise last round
+        const nowMs = Date.now();
+        let activeIndex = __scheduleData.findIndex((r) => {
+          const s = new Date(r.start).getTime();
+          const e = new Date(r.end).getTime();
+          return s <= nowMs && nowMs <= e;
+        });
+        if (activeIndex === -1) {
+          // pick first upcoming round
+          activeIndex = __scheduleData.findIndex(
+            (r) => new Date(r.start).getTime() > nowMs
+          );
+        }
+        if (activeIndex === -1) activeIndex = __scheduleData.length - 1; // fallback to last
+
+        __currentPos = activeIndex;
+        renderRoundAt(__currentPos);
+      }
+
+      function renderRoundAt(pos) {
+        const container = document.getElementById("matchupsContainer");
+        const r = __scheduleData[pos];
+        if (!r) return;
+
+        const start = new Date(r.start).toLocaleString();
+        const end = new Date(r.end).toLocaleString();
+
+        let html = "";
+        html += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:18px;color:#e6eef8;font-weight:700">${r.label}</div>
+          <div style="color:#9ca3af;font-size:13px">${start} → ${end}</div>
+        </div>`;
+
+        // navigation controls (centered)
+        html += `<div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:14px">
+          <button class="tab-btn" id="round-prev" ${
+            pos <= 0 ? "disabled" : ""
+          }>◀ Prev</button>
+          <div style="color:#9ca3af;font-size:13px">Round ${pos + 1} of ${
+          __scheduleData.length
+        }</div>
+          <button class="tab-btn" id="round-next" ${
+            pos >= __scheduleData.length - 1 ? "disabled" : ""
+          }>Next ▶</button>
+        </div>`;
+
+        html += '<div class="schedule-card">';
+        html += '<div style="display:flex;flex-direction:column;gap:10px">';
+        let mi = 0;
+        for (const m of r.matchups) {
+          const mid = `match-${r.roundIndex}-${mi}`;
+          if (m.byeUserId) {
+            html += `<div class="matchup-card" id="${mid}"><div class="matchup-row-inner"><div class="team-side"><div class="team-meta"><div class="team-name">${m.byeUsername}</div><div class="team-sub">BYE</div></div></div><div style="margin-left:12px;color:#9ca3af;font-size:13px" id="status-${mid}"></div></div></div>`;
+            mi++;
+            continue;
+          }
+
+          html += `<div class="matchup-card" id="${mid}">`;
+          html += `<div class="matchup-row-inner">`;
+          html += `<div class="team-side team-left">`;
+          html += `<div style="width:44px;height:44px;border-radius:999px;background:linear-gradient(90deg,#111827,#0b1220)"></div>`;
+          html += `<div class="team-meta"><div class="team-name">${m.homeUsername}</div><div class="team-sub">Home</div></div>`;
+          html += `</div>`;
+
+          // center block with scores and VS
+          html += `<div style="display:flex;flex-direction:column;align-items:center;gap:8px">`;
+          html += `<div style="display:flex;align-items:center;gap:12px">`;
+          html += `<div id="score-home-${mid}" style="min-width:56px;text-align:right;font-weight:700;color:#e6eef8">--</div>`;
+          html += `<div class="vs-wrap"><div class="vs-line"></div><div class="vs-circle">VS</div></div>`;
+          html += `<div id="score-away-${mid}" style="min-width:56px;text-align:left;font-weight:700;color:#e6eef8">--</div>`;
+          html += `</div>`; // score row
+          html += `</div>`; // center block
+
+          html += `<div class="team-side team-right">`;
+          html += `<div class="team-meta"><div class="team-name">${m.awayUsername}</div><div class="team-sub">Away</div></div>`;
+          html += `</div>`;
+          html += `</div>`; // .matchup-row-inner
+
+          // score bar (left = home, right = away). IDs used by JS to set widths/colors
+          html += `<div class="score-bar" id="bar-${mid}"><div class="bar-left" id="barl-${mid}" style="width:50%"></div><div class="bar-right" id="barr-${mid}" style="width:50%"></div><div class="bar-percent-left" id="pct-home-${mid}">--%</div><div class="bar-percent-right" id="pct-away-${mid}">--%</div></div>`;
+
+          html += `<div style="margin-left:0;margin-top:6px;color:#9ca3af;font-size:13px" id="status-${mid}"></div>`;
+          html += `</div>`;
+          mi++;
+        }
+        html += "</div></div>";
+
+        container.innerHTML = html;
+
+        // wire navigation buttons
+        document.getElementById("round-prev")?.addEventListener("click", () => {
+          if (__currentPos > 0) {
+            __currentPos -= 1;
+            renderRoundAt(__currentPos);
+          }
+        });
+        document.getElementById("round-next")?.addEventListener("click", () => {
+          if (__currentPos < __scheduleData.length - 1) {
+            __currentPos += 1;
+            renderRoundAt(__currentPos);
+          }
+        });
+
+        // fetch scores for this round and populate statuses
+        fetchAndAttachRoundScores(r.roundIndex);
+      }
+
+      async function fetchAndAttachRoundScores(roundIndex) {
+        try {
+          const res = await fetch(`/api/leagues/round/${roundIndex}/scores`, {
+            credentials: "same-origin",
+          });
+          const contentType = (
+            res.headers.get("content-type") || ""
+          ).toLowerCase();
+          if (contentType.includes("text/html")) {
+            // session likely expired
+            window.location.href = "/login";
+            return;
+          }
+          if (!res.ok) return;
+          const data = await res.json().catch(() => null);
+          if (!data || !Array.isArray(data.matchups)) return;
+
+          data.matchups.forEach((m, idx) => {
+            const mid = `match-${roundIndex}-${idx}`;
+            const statusEl = document.getElementById(`status-${mid}`);
+            if (!statusEl) return;
+
+            if (m.type === "BYE") {
+              statusEl.textContent = "BYE";
+              return;
+            }
+
+            const homePts =
+              (m.score && m.score.home && Number(m.score.home.profit)) || 0;
+            const awayPts =
+              (m.score && m.score.away && Number(m.score.away.profit)) || 0;
+
+            // update numeric score displays if present
+            const scoreHomeEl = document.getElementById(`score-home-${mid}`);
+            const scoreAwayEl = document.getElementById(`score-away-${mid}`);
+            if (scoreHomeEl) scoreHomeEl.textContent = homePts.toFixed(2);
+            if (scoreAwayEl) scoreAwayEl.textContent = awayPts.toFixed(2);
+
+            // compute bar widths (use non-negative contributions)
+            let leftVal = Math.max(0, homePts);
+            let rightVal = Math.max(0, awayPts);
+            let leftPct = 50,
+              rightPct = 50;
+            if (leftVal === 0 && rightVal === 0) {
+              leftPct = rightPct = 50;
+            } else {
+              const s = leftVal + rightVal;
+              leftPct = s > 0 ? Math.round((leftVal / s) * 100) : 50;
+              rightPct = 100 - leftPct;
+            }
+
+            const barLeft = document.getElementById(`barl-${mid}`);
+            const barRight = document.getElementById(`barr-${mid}`);
+            if (barLeft) barLeft.style.width = leftPct + "%";
+            if (barRight) barRight.style.width = rightPct + "%";
+            // color the leading side green, other side muted
+            if (barLeft && barRight) {
+              if (homePts > awayPts) {
+                barLeft.style.background =
+                  "linear-gradient(90deg,#10b981,#059669)";
+                barRight.style.background =
+                  "linear-gradient(90deg,#ef4444,#dc2626)";
+              } else if (awayPts > homePts) {
+                barRight.style.background =
+                  "linear-gradient(90deg,#10b981,#059669)";
+                barLeft.style.background =
+                  "linear-gradient(90deg,#ef4444,#dc2626)";
+              } else {
+                barLeft.style.background = barRight.style.background =
+                  "rgba(255,255,255,0.06)";
+              }
+            }
+
+            // Determine whether the round has actually finished (official)
+            const roundEnd =
+              data && data.round && data.round.end
+                ? new Date(data.round.end).getTime()
+                : null;
+            const isRoundFinished =
+              roundEnd != null ? roundEnd <= Date.now() : false;
+
+            if (m.score && m.score.result) {
+              // Use 'Winning' language while round is ongoing, 'Winner' once round end has passed
+              const prefix = isRoundFinished ? "Winner" : "Winning";
+              if (m.score.result === "HOME_WIN") {
+                statusEl.textContent = `${prefix}: ${
+                  m.homeDisplayName
+                } (${homePts.toFixed(2)} vs ${awayPts.toFixed(2)})`;
+                statusEl.style.color = isRoundFinished ? "#10b981" : "#f59e0b";
+              } else if (m.score.result === "AWAY_WIN") {
+                statusEl.textContent = `${prefix}: ${
+                  m.awayDisplayName
+                } (${awayPts.toFixed(2)} vs ${homePts.toFixed(2)})`;
+                statusEl.style.color = isRoundFinished ? "#10b981" : "#f59e0b";
+              } else if (m.score.result === "TIE") {
+                statusEl.textContent = `TIE (${homePts.toFixed(
+                  2
+                )} vs ${awayPts.toFixed(2)})`;
+                statusEl.style.color = "#9ca3af";
+              } else {
+                // Unknown result label, fall back to leader
+                if (homePts > awayPts) {
+                  statusEl.textContent = `Leading: ${
+                    m.homeDisplayName
+                  } (${homePts.toFixed(2)} vs ${awayPts.toFixed(2)})`;
+                  statusEl.style.color = "#f59e0b";
+                } else if (awayPts > homePts) {
+                  statusEl.textContent = `Leading: ${
+                    m.awayDisplayName
+                  } (${awayPts.toFixed(2)} vs ${homePts.toFixed(2)})`;
+                  statusEl.style.color = "#f59e0b";
+                } else {
+                  statusEl.textContent = `Tied (${homePts.toFixed(
+                    2
+                  )} vs ${awayPts.toFixed(2)})`;
+                  statusEl.style.color = "#9ca3af";
+                }
+              }
+            } else {
+              // Round in progress or incomplete — show live leader
+              if (homePts > awayPts) {
+                statusEl.textContent = `Leading: ${
+                  m.homeDisplayName
+                } (${homePts.toFixed(2)} vs ${awayPts.toFixed(2)})`;
+                statusEl.style.color = "#f59e0b";
+              } else if (awayPts > homePts) {
+                statusEl.textContent = `Leading: ${
+                  m.awayDisplayName
+                } (${awayPts.toFixed(2)} vs ${homePts.toFixed(2)})`;
+                statusEl.style.color = "#f59e0b";
+              } else {
+                statusEl.textContent = `Tied (${homePts.toFixed(
+                  2
+                )} vs ${awayPts.toFixed(2)})`;
+                statusEl.style.color = "#9ca3af";
+              }
+            }
+          });
+        } catch (e) {
+          console.warn("Failed to fetch round scores", e);
+        }
+      }
+
+      loadMatchups();
+    </script>
+  </body>
+</html>
+
+*** End Patch
