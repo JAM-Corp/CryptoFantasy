@@ -288,11 +288,11 @@
 
         const title = document.createElement("div");
         title.className = "coin-title";
-        title.textContent = coin.name;
+        title.textContent = coin.acronym;
 
         const sub = document.createElement("div");
         sub.className = "coin-sub";
-        sub.textContent = `Rank #${coin.market_cap_rank ?? "N/A"}`;
+        sub.textContent = coin.name;
 
         const right = document.createElement("div");
         right.className = "coin-right";

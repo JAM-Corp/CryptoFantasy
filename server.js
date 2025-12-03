@@ -81,7 +81,7 @@ const pool = dbConfig ? new Pool(dbConfig) : null;
 const COIN_WHITELIST = (
   process.env.COIN_WHITELIST ||
   process.env.CG_IDS ||
-  "bitcoin,ethereum,solana"
+  "bitcoin,ethereum,solana,tether,binancecoin,ripple,usd-coin,tron,dogecoin,cardano"
 )
   .split(",")
   .map((s) => normalizeCoinId(s))
@@ -1535,11 +1535,12 @@ app.get("/api/cg/coins", async (req, res) => {
     const data = await response.json();
 
     const payload = data.map((c) => ({
-      id: c.id, // CoinGecko ID (e.g. "bitcoin")
-      symbol: c.id, // we treat ID as our symbol internally
+      id: c.id,          // CoinGecko ID (e.g. "bitcoin")
+      symbol: c.id,      // we treat ID as our symbol internally
+      acronym: c.symbol.toUpperCase(),
       name: c.name,
       current_price: c.current_price,
-      market_cap_rank: c.market_cap_rank,
+      price_change_percentage_24h: c.price_change_percentage_24h,
     }));
 
     res.json(payload);
@@ -1671,10 +1672,7 @@ app.get("/api/portfolio/history", requireAuth, async (req, res) => {
     await ensurePortfolio(req.session.userId, leagueId);
 
     // Get all trades for this user in this league
-    const tradesResult = await pool.query(portfolioHistoryQueries.getTrades, [
-      req.session.userId,
-      leagueId,
-    ]);
+    const tradesResult = await getUserTrades(req.session.userId, leagueId);
 
     if (tradesResult.rows.length === 0) {
       // No trades yet - return starting balance
@@ -1924,6 +1922,41 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     res.status(500).json({ error: String(e) });
   }
 });
+
+app.get("/api/trades/recent", requireAuth, async (req, res) => {
+  try {
+    if (!pool) {
+      return res.status(500).json({ error: "Database not configured" });
+    }
+
+    const leagueId = await getOrCreateCurrentLeagueId(req);
+    await ensurePortfolio(req.session.userId, leagueId);
+
+    const tradeResult = await getUserTrades(req.session.userId, leagueId);
+    const recent = tradeResult.rows.slice(-4).reverse();
+
+    res.json({ trades: recent });
+  } catch (e) {
+    console.error("recent trades error:", e);
+    res.status(500).json({ error: "Failed to load recent trades" });
+  }
+})
+
+async function getUserTrades (userId, leagueId) {
+  if (!pool) {
+    const err = new Error("Database not configured");
+    err.status = 500;
+    throw err;
+  }
+
+  const res = await pool.query(portfolioHistoryQueries.getTrades, [
+    userId,
+    leagueId,
+  ]);
+
+  return res;
+}
+
 
 app.listen(PORT, () => {
   console.log(`listening on :${PORT}`);
