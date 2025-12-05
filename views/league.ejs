@@ -1044,30 +1044,20 @@
       let currentStandings = null;
 
       function showTab(name) {
-        const btnSchedule = document.getElementById("tabSchedule");
-        const btnMatchups = document.getElementById("tabMatchups");
-        const btnStandings = document.getElementById("tabStandings");
-
-        // remove all active states
-        [btnSchedule, btnMatchups, btnStandings].forEach(
-          (b) => b && b.classList.remove("active")
-        );
-
         // hide all panes
-        ["tabSchedule", "matchupsTab", "tabStandings"].forEach((id) => {
-          const el = document.getElementById(id);
-          if (el) el.style.display = "none";
-        });
+        const scheduleTab = document.getElementById("scheduleTab");
+        const standingsTab = document.getElementById("standingsTab");
+
+        if (scheduleTab) scheduleTab.style.display = "none";
+        if (standingsTab) standingsTab.style.display = "none";
 
         if (name === "schedule") {
-          btnSchedule && btnSchedule.classList.add("active");
-          document.getElementById("tabSchedule").style.display = "block";
+          if (scheduleTab) scheduleTab.style.display = "block";
         } else if (name === "matchups") {
-          btnMatchups && btnMatchups.classList.add("active");
-          document.getElementById("matchupsTab").style.display = "block";
-        } else {
-          btnStandings && btnStandings.classList.add("active");
-          document.getElementById("tabStandings").style.display = "block";
+          // Matchups are on a separate page, redirect there
+          window.location.href = "/matchups";
+        } else if (name === "standings") {
+          if (standingsTab) standingsTab.style.display = "block";
         }
       }
 

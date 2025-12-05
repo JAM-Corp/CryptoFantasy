@@ -18,6 +18,9 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
+// Trust proxy headers (needed for Fly.io and other reverse proxies)
+app.set("trust proxy", true);
+
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(express.static(path.join(__dirname, "public")));
@@ -120,6 +123,22 @@ function generateJoinCode(length = 6) {
     out += chars[Math.floor(Math.random() * chars.length)];
   }
   return out;
+}
+
+/**
+ * Build an invite URL for a league join code.
+ * Uses BASE_URL env var if available, otherwise constructs from request.
+ */
+function buildInviteUrl(req, joinCode) {
+  const baseUrl = process.env.BASE_URL;
+  if (baseUrl) {
+    // Use environment variable if set (most reliable for deployments)
+    return `${baseUrl.replace(/\/$/, "")}/league/join/${joinCode}`;
+  }
+  // Fallback to request-based construction (works with trust proxy)
+  const protocol = req.protocol;
+  const host = req.get("host");
+  return `${protocol}://${host}/league/join/${joinCode}`;
 }
 
 async function joinLeagueForUserByCode(userId, rawCode) {
@@ -971,9 +990,7 @@ app.post("/api/leagues", requireAuth, async (req, res) => {
     // Set as current league in session
     req.session.currentLeagueId = leagueId;
 
-    const inviteUrl = `${req.protocol}://${req.get(
-      "host"
-    )}/league/join/${joinCode}`;
+    const inviteUrl = buildInviteUrl(req, joinCode);
 
     return res.json({
       success: true,
@@ -1066,9 +1083,7 @@ app.get("/api/leagues/schedule", requireAuth, async (req, res) => {
 
     // Prefer returning the persisted join code and a canonical invite URL
     const joinCode = league.join_code || null;
-    const inviteUrl = joinCode
-      ? `${req.protocol}://${req.get("host")}/league/join/${joinCode}`
-      : null;
+    const inviteUrl = joinCode ? buildInviteUrl(req, joinCode) : null;
 
     return res.json({
       league: {
@@ -1535,8 +1550,8 @@ app.get("/api/cg/coins", async (req, res) => {
     const data = await response.json();
 
     const payload = data.map((c) => ({
-      id: c.id,          // CoinGecko ID (e.g. "bitcoin")
-      symbol: c.id,      // we treat ID as our symbol internally
+      id: c.id, // CoinGecko ID (e.g. "bitcoin")
+      symbol: c.id, // we treat ID as our symbol internally
       acronym: c.symbol.toUpperCase(),
       name: c.name,
       current_price: c.current_price,
@@ -1940,9 +1955,9 @@ app.get("/api/trades/recent", requireAuth, async (req, res) => {
     console.error("recent trades error:", e);
     res.status(500).json({ error: "Failed to load recent trades" });
   }
-})
+});
 
-async function getUserTrades (userId, leagueId) {
+async function getUserTrades(userId, leagueId) {
   if (!pool) {
     const err = new Error("Database not configured");
     err.status = 500;
@@ -1956,7 +1971,6 @@ async function getUserTrades (userId, leagueId) {
 
   return res;
 }
-
 
 app.listen(PORT, () => {
   console.log(`listening on :${PORT}`);
