@@ -1707,7 +1707,7 @@ app.get("/api/portfolio/history", requireAuth, async (req, res) => {
     const trades = tradesResult.rows;
     const symbols = [...new Set(trades.map((t) => t.symbol))];
 
-    // Get current prices for all symbols
+    // Get current prices for all symbols as a fallback
     const pricesResult = await pool.query(
       portfolioHistoryQueries.getCurrentPricesForSymbols,
       [symbols]
@@ -1718,73 +1718,127 @@ app.get("/api/portfolio/history", requireAuth, async (req, res) => {
       currentPrices[row.symbol] = Number(row.price);
     });
 
-    // Build portfolio value over time by replaying trades
+    // Fetch historical price points for all traded symbols between
+    // a small buffer before the first trade and now. We'll use these
+    // timestamps to compute portfolio value across time so intra-day
+    // fluctuations are visible.
+    const bufferMs = 12 * 60 * 60 * 1000; // 12 hours buffer before first trade
+    const priceWindowStart = new Date(Math.max(0, firstTradeTime - bufferMs));
+    const priceWindowEnd = new Date(now);
+
+    const pricePointsRes = await pool.query(
+      `
+      SELECT symbol, ts_min::text AS ts_min, price_usd::numeric AS price
+      FROM price_points_min
+      WHERE symbol = ANY($1)
+        AND ts_min >= $2
+        AND ts_min <= $3
+      ORDER BY ts_min ASC
+      `,
+      [symbols, priceWindowStart.toISOString(), priceWindowEnd.toISOString()]
+    );
+
+    // Organize price points by symbol
+    const priceMap = new Map();
+    for (const r of pricePointsRes.rows) {
+      const s = r.symbol;
+      if (!priceMap.has(s)) priceMap.set(s, []);
+      priceMap
+        .get(s)
+        .push({ ts: new Date(r.ts_min).getTime(), price: Number(r.price) });
+    }
+
+    // Build a sorted list of unique timestamps from all price series
+    const allTimestampsSet = new Set();
+    for (const arr of priceMap.values()) {
+      for (const p of arr) allTimestampsSet.add(p.ts);
+    }
+    // Also include trade timestamps and now
+    for (const t of trades)
+      allTimestampsSet.add(new Date(t.created_at).getTime());
+    allTimestampsSet.add(now);
+
+    const allTimestamps = Array.from(allTimestampsSet).sort((a, b) => a - b);
+
+    // Replay trades across the timeline and compute portfolio value at each timestamp
     let cash = 100000;
     const holdings = {};
     const history = [];
 
-    // Starting point - before any trades
-    history.push({
-      timestamp: firstTradeTime - 1000, // 1 second before first trade
-      value: 100000,
-    });
+    // trades are ordered by created_at asc
+    let tradeIdx = 0;
 
-    // Process each trade and calculate portfolio value at that moment
-    for (const trade of trades) {
-      const symbol = trade.symbol;
-      const qty = Number(trade.qty);
-      const price = Number(trade.price_usd);
-      const cost = qty * price;
+    // Maintain per-symbol index into its price array so we can get last known price <= ts
+    const symbolIdx = {};
+    for (const s of symbols) symbolIdx[s] = 0;
 
-      if (trade.side === "BUY") {
-        cash -= cost;
-        holdings[symbol] = (holdings[symbol] || 0) + qty;
-      } else {
-        cash += cost;
-        holdings[symbol] = (holdings[symbol] || 0) - qty;
-        if (holdings[symbol] <= 0) {
-          delete holdings[symbol];
+    for (const ts of allTimestamps) {
+      // apply any trades up to this timestamp
+      while (
+        tradeIdx < trades.length &&
+        new Date(trades[tradeIdx].created_at).getTime() <= ts
+      ) {
+        const tr = trades[tradeIdx];
+        const s = tr.symbol;
+        const q = Number(tr.qty);
+        const px = Number(tr.price_usd);
+        const cost = q * px;
+        if (tr.side === "BUY") {
+          cash -= cost;
+          holdings[s] = (holdings[s] || 0) + q;
+        } else {
+          cash += cost;
+          holdings[s] = (holdings[s] || 0) - q;
+          if (holdings[s] <= 0) delete holdings[s];
         }
+        tradeIdx++;
       }
 
-      // Calculate portfolio value using current market prices
+      // compute crypto value using latest price point at or before ts for each holding
       let cryptoValue = 0;
-      for (const [sym, holdQty] of Object.entries(holdings)) {
-        const currentPrice = currentPrices[sym] || 0;
-        cryptoValue += holdQty * currentPrice;
+      for (const [s, qty] of Object.entries(holdings)) {
+        const pts = priceMap.get(s) || [];
+        let idx = symbolIdx[s] || 0;
+        let lastPrice = null;
+
+        // Advance index while point.ts <= ts
+        while (idx < pts.length && pts[idx].ts <= ts) {
+          lastPrice = pts[idx].price;
+          idx++;
+        }
+
+        // store back index (so next timestamp continues from here)
+        symbolIdx[s] = Math.max(0, idx - 1);
+
+        // If we didn't find a historical price, fall back to latest price
+        const usedPrice = lastPrice != null ? lastPrice : currentPrices[s] || 0;
+        cryptoValue += qty * usedPrice;
       }
 
-      const tradeTime = new Date(trade.created_at).getTime();
-      history.push({
-        timestamp: tradeTime,
-        value: cash + cryptoValue,
+      history.push({ timestamp: ts, value: cash + cryptoValue });
+    }
+
+    // Ensure history is trimmed and deduped (some timestamps may duplicate)
+    const deduped = [];
+    let lastVal = null;
+    for (const h of history) {
+      if (lastVal == null || h.value !== lastVal) {
+        deduped.push(h);
+        lastVal = h.value;
+      }
+    }
+
+    // If we ended up with no deduped points, return starting and current
+    if (deduped.length === 0) {
+      return res.json({
+        history: [
+          { timestamp: Date.now() - 24 * 60 * 60 * 1000, value: 100000 },
+          { timestamp: Date.now(), value: 100000 },
+        ],
       });
     }
 
-    // Add current state
-    const cashNow = await pool.query(portfolioQueries.getCash, [
-      req.session.userId,
-      leagueId,
-    ]);
-    const holdingsNow = await pool.query(
-      portfolioQueries.getHoldingsWithPrices,
-      [req.session.userId, leagueId]
-    );
-
-    const currentCash = cashNow.rows.length
-      ? Number(cashNow.rows[0].cash_usd)
-      : cash;
-    let currentCrypto = 0;
-    holdingsNow.rows.forEach((h) => {
-      currentCrypto += Number(h.qty) * Number(h.price_usd || 0);
-    });
-
-    history.push({
-      timestamp: now,
-      value: currentCash + currentCrypto,
-    });
-
-    res.json({ history });
+    res.json({ history: deduped });
   } catch (e) {
     console.error("portfolio history error:", e);
     res.status(500).json({ error: String(e) });
