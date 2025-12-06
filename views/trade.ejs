@@ -795,19 +795,6 @@
         amountInput.value = bal ? String((bal / 2).toFixed(2)) : "";
       });
 
-      async function getPriceForSymbol(sym) {
-        const obj = coinsData.find(c => c.symbol === sym);
-        if (obj && obj.price_usd) return Number(obj.price_usd);
-        try {
-          const r = await fetch(`/api/price/${encodeURIComponent(sym)}`);
-          if (!r.ok) throw new Error("no price");
-          const j = await r.json();
-          return Number(j.price_usd || j.price || 0);
-        } catch (e) {
-          return null;
-        }
-      }
-
       // Handle button clicks to set side (only main BUY/SELL buttons)
       document.querySelectorAll("button[data-side]").forEach((btn) => {
         btn.addEventListener("click", (e) => {
@@ -864,17 +851,11 @@
         }
 
         try {
-          // determine price and compute quantity to send to server
-          const price = await getPriceForSymbol(symbol);
-          if (!price) {
-            throw new Error("Price unavailable; try later");
-          }
-          const qty = +(usdAmount / price).toFixed(8);
-
+          // Let the server handle price + quantity math based on this USD amount
           const body = {
             symbol,
             side: selectedSide,
-            quantity: qty,
+            amountUsd: usdAmount,
           };
 
           const r = await fetch("/api/trade", {
@@ -889,7 +870,9 @@
             resultDiv.className = "result-success";
             resultDiv.innerHTML = `
               <div class="result-header">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
                   <polyline points="22 4 12 14.01 9 11.01"></polyline>
                 </svg>
@@ -898,7 +881,7 @@
               <div class="result-details">
                 <div class="result-row">
                   <span>Action:</span>
-                  <span class="highlight">${body.side} ${body.quantity} ${body.symbol}</span>
+                  <span class="highlight">${body.side} (USD ${usdAmount.toFixed(2)}) ${body.symbol}</span>
                 </div>
                 <div class="result-row">
                   <span>Price:</span>
@@ -919,10 +902,7 @@
               </div>
             `;
 
-            // After successful trade, refresh portfolio from server to get canonical values
             await loadPortfolio();
-
-            // Reset form
             form.reset();
           } else {
             throw new Error(j.error || "Trade failed");
@@ -932,7 +912,9 @@
           resultDiv.className = "result-error";
           resultDiv.innerHTML = `
             <div class="result-header">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                  viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                  stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"></circle>
                 <line x1="15" y1="9" x2="9" y2="15"></line>
                 <line x1="9" y1="9" x2="15" y2="15"></line>

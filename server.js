@@ -1850,60 +1850,90 @@ app.post("/api/trade", requireAuth, async (req, res) => {
     if (!pool)
       return res.status(500).json({ error: "Database not configured" });
 
-    const { symbol, side, quantity } = req.body;
+    const { symbol, side, amountUsd } = req.body;
     const sideU = (side || "").toUpperCase();
-    const qty = Number(quantity);
+    const usdAmount = Number(amountUsd);
 
     const leagueId = await getOrCreateCurrentLeagueId(req);
     await ensurePortfolio(req.session.userId, leagueId);
 
-    // Treat "symbol" from the client as CoinGecko ID,
-    // and validate only against the global env whitelist.
     const coinId = validateSymbol(symbol);
-
     if (!coinId) {
       return res
         .status(400)
         .json({ error: "coin not allowed (not in global whitelist)" });
     }
 
-    if (sideU !== "BUY" && sideU !== "SELL")
+    if (sideU !== "BUY" && sideU !== "SELL") {
       return res.status(400).json({ error: "side must be BUY or SELL" });
-    if (!Number.isFinite(qty) || qty <= 0)
-      return res.status(400).json({ error: "quantity must be > 0" });
+    }
 
-    // fetch price using CoinGecko ID
+    if (!Number.isFinite(usdAmount) || usdAmount <= 0) {
+      return res
+        .status(400)
+        .json({ error: "amountUsd must be a positive number" });
+    }
+
+    // Single source of truth for price: DB
     const price = await getCurrentPrice(coinId);
-    if (!price)
+    if (!price) {
       return res.status(400).json({ error: "no current price; try later" });
+    }
     const px = Number(price);
-    const cost = +(px * qty).toFixed(8); // positive number
+    const EPS = 1e-6;
 
     await pool.query("BEGIN");
 
-    // load current cash & qty with FOR UPDATE
+    // Lock cash row
     const cashRow = await pool.query(portfolioQueries.getCashForUpdate, [
       req.session.userId,
       leagueId,
     ]);
     const cash = cashRow.rows.length ? Number(cashRow.rows[0].cash_usd) : 0;
 
-    const hRow = await pool.query(portfolioQueries.getHoldingForUpdate, [
-      req.session.userId,
-      leagueId,
-      coinId,
-    ]);
-    const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
+    let qty, cost;
 
     if (sideU === "BUY") {
-      if (cash < cost) {
+      if (cash <= 0) {
         await pool.query("ROLLBACK");
         return res.status(400).json({ error: "insufficient cash" });
       }
+
+      // Don't allow spending more than you actually have
+      if (usdAmount > cash + EPS) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "insufficient cash" });
+      }
+
+      const budget = Math.min(usdAmount, cash);
+
+      // Compute quantity on the server, floored so cost <= budget
+      qty = Math.floor((budget / px) * 1e8) / 1e8;
+      if (qty <= 0) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "trade too small" });
+      }
+
+      cost = +(px * qty).toFixed(8);
+      if (cash + EPS < cost) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "insufficient cash" });
+      }
+
+      const newCash = cash - cost;
+
+      // Lock holding row
+      const hRow = await pool.query(portfolioQueries.getHoldingForUpdate, [
+        req.session.userId,
+        leagueId,
+        coinId,
+      ]);
+      const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
+
       await pool.query(portfolioQueries.updateCash, [
         req.session.userId,
         leagueId,
-        cash - cost,
+        newCash,
       ]);
       await pool.query(portfolioQueries.upsertHolding, [
         req.session.userId,
@@ -1921,17 +1951,41 @@ app.post("/api/trade", requireAuth, async (req, res) => {
         cost,
       ]);
     } else {
-      // SELL
-      if (curQty < qty) {
+      const hRow = await pool.query(portfolioQueries.getHoldingForUpdate, [
+        req.session.userId,
+        leagueId,
+        coinId,
+      ]);
+      const curQty = hRow.rows[0] ? Number(hRow.rows[0].qty) : 0;
+
+      if (curQty <= 0) {
         await pool.query("ROLLBACK");
         return res.status(400).json({ error: "insufficient quantity" });
       }
+
+      qty = Math.floor((usdAmount / px) * 1e8) / 1e8;
+      if (qty <= 0) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "trade too small" });
+      }
+
+      if (qty > curQty + EPS) {
+        await pool.query("ROLLBACK");
+        return res.status(400).json({ error: "insufficient quantity" });
+      }
+
+      if (qty > curQty) qty = curQty;
+
+      cost = +(px * qty).toFixed(8);
+      const newCash = cash + cost;
+      const newQty = curQty - qty;
+
       await pool.query(portfolioQueries.updateCash, [
         req.session.userId,
         leagueId,
-        cash + cost,
+        newCash,
       ]);
-      const newQty = curQty - qty;
+
       if (newQty <= 0) {
         await pool.query(portfolioQueries.deleteHolding, [
           req.session.userId,
@@ -1959,7 +2013,6 @@ app.post("/api/trade", requireAuth, async (req, res) => {
 
     await pool.query("COMMIT");
 
-    // return fresh snapshot for this league (unchanged)
     const { rows } = await pool.query(portfolioQueries.getHoldings, [
       req.session.userId,
       leagueId,
