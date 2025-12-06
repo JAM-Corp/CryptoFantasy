@@ -615,14 +615,9 @@
         const values = dataPoints.map((p) => p.y);
         const minValue = Math.min(...values);
         const maxValue = Math.max(...values);
-        const range = maxValue - minValue;
-
-        // Force a minimum range of at least 1% of the value for better visualization
-        const minRange = maxValue * 0.02;
-        const actualRange = Math.max(range, minRange);
-
-        const yMin = minValue - actualRange;
-        const yMax = maxValue + actualRange;
+        // Set y-axis min/max to exact min/max for maximum detail
+        const yMin = minValue;
+        const yMax = maxValue;
 
         chart = new Chart(ctx, {
           type: "line",
@@ -670,10 +665,10 @@
                 grid: { color: "rgba(255,255,255,0.08)" },
                 ticks: {
                   color: "#a9b4c6",
-                  maxTicksLimit: 5,
+                  maxTicksLimit: 12, // even more ticks for granularity
                   callback: (v) =>
                     `$${Number(v).toLocaleString(undefined, {
-                      maximumFractionDigits: 0,
+                      maximumFractionDigits: 2,
                     })}`,
                 },
               },
